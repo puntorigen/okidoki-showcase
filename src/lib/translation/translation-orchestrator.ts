@@ -200,6 +200,14 @@ export class TranslationOrchestrator {
       this.batches = batchingEngine.createBatches(documentJson);
       this.state.totalBatches = this.batches.length;
 
+      // Check for empty document
+      if (this.batches.length === 0) {
+        this.state.status = 'error';
+        this.state.error = 'No translatable content found in the document';
+        callbacks.onError('No translatable content found in the document');
+        return;
+      }
+
       // Initialize accumulator
       this.documentAccumulator.initialize(
         documentJson,

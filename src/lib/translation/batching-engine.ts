@@ -221,25 +221,30 @@ export class BatchingEngine {
   }
 
   /**
-   * Extract text segments with formatting marks
+   * Extract text segments with formatting marks (recursive)
    */
   private extractSegments(content: any[]): TextSegment[] {
     const segments: TextSegment[] = [];
     let segmentIndex = 0;
 
-    for (const child of content) {
-      if (child.type === 'text' && child.text) {
-        segments.push({
-          id: `s_${segmentIndex++}`,
-          text: child.text,
-          marks: (child.marks || []).map((m: any) => ({
-            type: m.type,
-            attrs: m.attrs,
-          })),
-        });
+    const extract = (nodes: any[]) => {
+      for (const child of nodes) {
+        if (child.type === 'text' && child.text) {
+          segments.push({
+            id: `s_${segmentIndex++}`,
+            text: child.text,
+            marks: (child.marks || []).map((m: any) => ({
+              type: m.type,
+              attrs: m.attrs,
+            })),
+          });
+        } else if (child.content) {
+          extract(child.content);
+        }
       }
-    }
+    };
 
+    extract(content);
     return segments;
   }
 
