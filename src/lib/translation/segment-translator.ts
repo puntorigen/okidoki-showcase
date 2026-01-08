@@ -98,20 +98,22 @@ export class SegmentTranslator {
 
   /**
    * Build the segments list for the prompt
+   * Format annotations in ⟨angle brackets⟩ indicate styling for context
    */
   private buildSegmentsList(batch: DocumentBatch): string {
     const lines: string[] = [];
 
     for (const paragraph of batch.paragraphs) {
       for (const segment of paragraph.segments) {
-        const markIndicators = segment.marks
-          .map(m => m.type)
-          .filter(Boolean)
-          .join(', ');
-        
         const segmentId = `p${paragraph.paragraphIndex}_${segment.id}`;
-        const marksStr = markIndicators ? ` (${markIndicators})` : '';
-        lines.push(`[${segmentId}] "${segment.text}"${marksStr}`);
+        
+        // Add format annotation in Unicode angle brackets if segment has marks
+        const formats = segment.marks
+          .map(m => m.type)
+          .filter(Boolean);
+        const formatAnnotation = formats.length > 0 ? ` ⟨${formats.join(', ')}⟩` : '';
+        
+        lines.push(`[${segmentId}] "${segment.text}"${formatAnnotation}`);
       }
     }
 
@@ -135,13 +137,16 @@ export class SegmentTranslator {
     return `Translate text segments from ${sourceLanguage} to ${targetLanguage}.
 
 ${sectionContext}
+FORMAT ANNOTATIONS:
+Annotations in ⟨angle brackets⟩ like ⟨bold⟩ or ⟨italic⟩ indicate how text is styled in the source document. Use this to understand emphasis and tone, but return ONLY the translated text without any annotations.
+
 CRITICAL RULES:
 1. Return the SAME number of segments with the SAME IDs
-2. Each segment must correspond to its original (formatting will be applied)
+2. Each segment must correspond to its original
 3. You may adjust word order within segments to make natural translations
 4. Keep proper nouns, brand names, and marked technical terms as instructed
 5. Maintain consistency with the glossary terms provided
-6. For text in parentheses like (bold) or (italic), these indicate formatting - preserve them
+6. Return ONLY the translated text - never include ⟨format⟩ annotations in output
 
 TRANSLATION GUIDELINES:
 - Produce natural, fluent ${targetLanguage} translations

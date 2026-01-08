@@ -352,9 +352,8 @@ Output ONLY HTML content. Use <h1> for title, <h2> for sections, <p> for paragra
                 // Emit progress for overlay
                 progressCallback?.(progress);
               },
-              onComplete: async (translatedJson) => {
-                // Apply the final translated document
-                await viewer.setSource(translatedJson);
+              onComplete: async () => {
+                // Document already updated via milestone callbacks
                 setDocumentState({ createdByAI: true, userHasEdited: false });
                 widget.setToolNotification?.(null);
               },

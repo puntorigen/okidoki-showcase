@@ -344,14 +344,12 @@ export class TranslationOrchestrator {
     this.state.status = 'completed';
     this.state.completedBatches = this.batches.length;
 
-    // Force final document update
-    this.documentAccumulator.forceUpdate();
-
     // Clear persistence
     translationPersistence.clear();
 
-    // Report completion
-    this.callbacks?.onComplete(this.documentAccumulator.rebuildDocument());
+    // Report completion - onComplete callback handles the final setSource
+    const finalDocument = this.documentAccumulator.rebuildDocument();
+    this.callbacks?.onComplete(finalDocument);
     this.reportProgress();
 
     console.log('[Orchestrator] Translation complete!');

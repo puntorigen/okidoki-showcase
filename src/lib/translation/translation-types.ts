@@ -187,7 +187,7 @@ export interface CachedTerminology {
 
 export interface TranslationCallbacks {
   onProgress: (progress: TranslationProgress) => void;
-  onComplete: (documentJson: any) => void;
+  onComplete: (documentJson?: any) => void;
   onError: (error: string, batchIndex?: number) => void;
   onCancelRequest?: () => Promise<'keep' | 'restore'>;
 }
