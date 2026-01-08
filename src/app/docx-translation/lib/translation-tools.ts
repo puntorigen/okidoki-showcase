@@ -4,7 +4,6 @@
  */
 
 import { DocumentState } from '../types';
-import { marked } from 'marked';
 import type { TranslationViewerRef } from '../components/TranslationViewer';
 import {
   createTranslationOrchestrator,
@@ -385,7 +384,7 @@ Output ONLY HTML content. Use <h1> for title, <h2> for sections, <p> for paragra
       },
     },
 
-    // 4. UPDATE DOCUMENT (same as superdoc-example)
+    // 4. UPDATE DOCUMENT - Surgical updates using segment mapping
     {
       name: 'update_document',
       description:
@@ -413,26 +412,55 @@ Output ONLY HTML content. Use <h1> for title, <h2> for sections, <p> for paragra
 
         try {
           const json = viewer.getContent();
-          if (!json) {
+          if (!json?.content) {
             widget.setToolNotification?.(null);
             return { success: false, error: 'Document is empty' };
           }
 
-          const extractText = (node: any): string => {
-            if (!node) return '';
-            if (node.text) return node.text;
-            if (node.content) {
-              return node.content.map((child: any) => extractText(child)).join(' ');
-            }
-            return '';
+          // Extract segments with position info
+          const segments: Array<{
+            id: string;
+            nodeIndex: number;
+            segmentIndex: number;
+            text: string;
+            marks: any[];
+          }> = [];
+
+          const extractSegments = (nodes: any[], nodeIndex: number) => {
+            let segmentIndex = 0;
+            const extract = (content: any[]) => {
+              for (const child of content) {
+                if (child.type === 'text' && child.text) {
+                  segments.push({
+                    id: `n${nodeIndex}_s${segmentIndex}`,
+                    nodeIndex,
+                    segmentIndex: segmentIndex++,
+                    text: child.text,
+                    marks: child.marks || [],
+                  });
+                } else if (child.content) {
+                  extract(child.content);
+                }
+              }
+            };
+            extract(nodes);
           };
 
-          const documentText = extractText(json);
-          
-          if (!documentText.trim()) {
-            widget.setToolNotification?.(null);
-            return { success: false, error: 'Document is empty' };
+          // Process all content nodes
+          for (let i = 0; i < json.content.length; i++) {
+            const node = json.content[i];
+            if (node.content) {
+              extractSegments(node.content, i);
+            }
           }
+
+          if (segments.length === 0) {
+            widget.setToolNotification?.(null);
+            return { success: false, error: 'Document has no text content' };
+          }
+
+          // Build segment list for LLM
+          const segmentList = segments.map(s => `[${s.id}] "${s.text}"`).join('\n');
 
           const today = new Date().toLocaleDateString(isSpanish ? 'es-ES' : 'en-US', {
             year: 'numeric',
@@ -440,37 +468,86 @@ Output ONLY HTML content. Use <h1> for title, <h2> for sections, <p> for paragra
             day: 'numeric',
           });
 
-          const modifyResult = await widget.ask({
-            prompt: `Apply the user's requested changes to this document and return the COMPLETE modified document as HTML.
-Output ONLY valid HTML. Use <h1> for title, <h2> for sections, <p> for paragraphs.
-Keep all existing content that should not change. Only modify what the user requested.`,
+          // Ask LLM for only the changes needed
+          const result = await widget.ask({
+            prompt: `You are given a document as a list of text segments. The user wants to make a change.
+
+CRITICAL: Return ONLY the segments that need to change. Do NOT return unchanged segments.
+
+For each segment that needs modification, return its ID and the new text.`,
             context: `TODAY'S DATE: ${today}
+
 USER REQUEST: ${request}
-CURRENT DOCUMENT TEXT:
-${documentText}`,
+
+DOCUMENT SEGMENTS:
+${segmentList}`,
+            output: widget.helpers ? {
+              changes: widget.helpers.array(
+                widget.helpers.object({
+                  id: widget.helpers.string('Segment ID (e.g., n0_s0)'),
+                  newText: widget.helpers.string('The new text for this segment'),
+                })
+              ),
+            } : undefined,
           });
-          
-          if (!modifyResult.success || !modifyResult.result) {
+
+          if (!result.success || !result.result?.changes) {
             widget.setToolNotification?.(null);
-            return { success: false, error: 'Failed to generate modified document' };
+            return { success: false, error: 'Failed to determine changes' };
           }
+
+          const changes = result.result.changes as Array<{ id: string; newText: string }>;
           
-          let modifiedHtml = modifyResult.result
-            .replace(/^```html?\s*/i, '')
-            .replace(/\s*```$/i, '')
-            .trim();
-          
-          if (!modifiedHtml.match(/^<[a-z]/i)) {
-            modifiedHtml = marked.parse(modifiedHtml, { async: false }) as string;
+          if (changes.length === 0) {
+            widget.setToolNotification?.(null);
+            return { success: true, message: 'No changes needed.' };
           }
-          
-          const comparisonResult = await viewer.compareWith(modifiedHtml);
+
+          // Create a map of changes by segment ID
+          const changeMap = new Map<string, string>();
+          for (const change of changes) {
+            changeMap.set(change.id, change.newText);
+          }
+
+          // Apply changes to a deep clone of the document
+          const updatedJson = JSON.parse(JSON.stringify(json));
+          let changesApplied = 0;
+
+          const applyChanges = (content: any[], nodeIndex: number) => {
+            let segmentIndex = 0;
+            const apply = (nodes: any[]) => {
+              for (const node of nodes) {
+                if (node.type === 'text' && node.text) {
+                  const id = `n${nodeIndex}_s${segmentIndex}`;
+                  const newText = changeMap.get(id);
+                  if (newText !== undefined) {
+                    node.text = newText;
+                    changesApplied++;
+                  }
+                  segmentIndex++;
+                } else if (node.content) {
+                  apply(node.content);
+                }
+              }
+            };
+            apply(content);
+          };
+
+          for (let i = 0; i < updatedJson.content.length; i++) {
+            const node = updatedJson.content[i];
+            if (node.content) {
+              applyChanges(node.content, i);
+            }
+          }
+
+          // Use compareWith to show track changes
+          await viewer.compareWith(updatedJson);
 
           widget.setToolNotification?.(null);
           return {
             success: true,
-            message: `Document updated with track changes.`,
-            changes: comparisonResult?.totalChanges || 0,
+            message: `Applied ${changesApplied} change(s) with track changes.`,
+            changes: changesApplied,
           };
         } catch (error) {
           console.error('[Tool] update_document error:', error);
