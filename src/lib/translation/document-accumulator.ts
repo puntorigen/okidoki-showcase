@@ -124,15 +124,15 @@ export class DocumentAccumulator {
       const node = document.content[nodeIndex];
       const translations = translationsByNode.get(nodeIndex);
       
-      if (translations && translations.length > 0) {
-        this.applyNodeTranslation(node, translations[0]);
-      }
-
-      // Handle nested structures (lists, tables)
+      // Handle nested structures with specialized methods first
+      // (they have their own content structure that shouldn't be replaced)
       if (node.type === 'bulletList' || node.type === 'orderedList') {
         this.applyListTranslations(node, translationsByNode, nodeIndex);
       } else if (node.type === 'table') {
         this.applyTableTranslations(node, translationsByNode, nodeIndex);
+      } else if (translations && translations.length > 0) {
+        // Regular nodes (paragraphs, headings) - apply direct translation
+        this.applyNodeTranslation(node, translations[0]);
       }
     }
   }
