@@ -1,10 +1,5 @@
 import { DocumentState } from '../types';
 import { marked } from 'marked';
-import { 
-  parseDocumentSections, 
-  findSectionByTitle,
-  getSectionTitles,
-} from './document-parser';
 import type { SuperDocViewerRef } from '../components/SuperDocViewer';
 
 // Virtual document structure for building content in memory
