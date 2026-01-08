@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { FileText, ArrowRight, Sparkles, Code2 } from 'lucide-react';
+import { FileText, ArrowRight, Sparkles, Languages } from 'lucide-react';
 
 export default function Home() {
   return (
@@ -66,18 +66,40 @@ export default function Home() {
             </div>
           </Link>
 
-          {/* Placeholder for more examples */}
-          <div className="relative bg-slate-50/50 rounded-2xl border border-dashed border-slate-300 p-8 flex flex-col items-center justify-center text-center min-h-[320px]">
-            <div className="w-14 h-14 bg-slate-100 rounded-xl flex items-center justify-center mb-6">
-              <Code2 className="w-7 h-7 text-slate-400" />
+          {/* DocTranslate Example */}
+          <Link 
+            href="/docx-translation"
+            className="group relative bg-white rounded-2xl border border-slate-200 p-8 hover:border-indigo-300 hover:shadow-xl hover:shadow-indigo-100/50 transition-all duration-300"
+          >
+            <div className="absolute inset-0 bg-gradient-to-br from-indigo-50/50 to-transparent rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity" />
+            <div className="relative">
+              <div className="w-14 h-14 bg-gradient-to-br from-indigo-500 to-violet-500 rounded-xl flex items-center justify-center mb-6 shadow-lg shadow-indigo-200/50 group-hover:scale-105 transition-transform">
+                <Languages className="w-7 h-7 text-white" />
+              </div>
+              <h3 className="text-xl font-bold text-slate-900 mb-3">
+                DocTranslate
+              </h3>
+              <p className="text-slate-600 mb-6 leading-relaxed">
+                AI-powered document translation preserving formatting, tables, and structure. 
+                Handles 50-100+ page documents with industry-aware terminology.
+              </p>
+              <div className="flex flex-wrap gap-2 mb-6">
+                <span className="px-3 py-1 bg-indigo-50 text-indigo-700 text-xs font-medium rounded-full">
+                  Translation
+                </span>
+                <span className="px-3 py-1 bg-slate-100 text-slate-600 text-xs font-medium rounded-full">
+                  Large Documents
+                </span>
+                <span className="px-3 py-1 bg-slate-100 text-slate-600 text-xs font-medium rounded-full">
+                  RAG Glossary
+                </span>
+              </div>
+              <div className="flex items-center text-indigo-600 font-semibold group-hover:gap-3 gap-2 transition-all">
+                <span>Try it out</span>
+                <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+              </div>
             </div>
-            <h3 className="text-xl font-bold text-slate-400 mb-3">
-              More Examples Coming
-            </h3>
-            <p className="text-slate-400 max-w-xs">
-              We&apos;re working on more showcase examples. Check back soon!
-            </p>
-          </div>
+          </Link>
         </div>
       </section>
 
