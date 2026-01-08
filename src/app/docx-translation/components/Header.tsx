@@ -1,6 +1,6 @@
 'use client';
 
-import { ChevronDown, Download, Languages, Globe, Check } from 'lucide-react';
+import { ChevronDown, Download, Languages, Globe, Check, Upload } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { Specialization } from '../types';
 import { useLanguage } from '../lib/LanguageContext';
@@ -17,6 +17,7 @@ interface HeaderProps {
   onSpecializationChange: (spec: Specialization) => void;
   onDownload: () => void;
   isDownloading: boolean;
+  onLoadFile: (file: File) => void;
 }
 
 export default function Header({
@@ -25,12 +26,23 @@ export default function Header({
   onSpecializationChange,
   onDownload,
   isDownloading,
+  onLoadFile,
 }: HeaderProps) {
   const { language, setLanguage, t } = useLanguage();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isLangDropdownOpen, setIsLangDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const langDropdownRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      onLoadFile(file);
+      // Reset input so same file can be selected again
+      e.target.value = '';
+    }
+  };
 
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -75,7 +87,7 @@ export default function Header({
           <div className="relative" ref={dropdownRef}>
             <button
               onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-              className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors"
+              className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors cursor-pointer"
             >
               <span className="text-sm">{currentSpecialization.name}</span>
               <ChevronDown
@@ -92,7 +104,7 @@ export default function Header({
                       onSpecializationChange(spec);
                       setIsDropdownOpen(false);
                     }}
-                    className={`w-full px-4 py-3 text-left hover:bg-slate-50 transition-colors ${
+                    className={`w-full px-4 py-3 text-left hover:bg-slate-50 transition-colors cursor-pointer ${
                       spec.id === currentSpecialization.id ? 'bg-indigo-50' : ''
                     }`}
                   >
@@ -108,7 +120,7 @@ export default function Header({
           <div className="relative" ref={langDropdownRef}>
             <button
               onClick={() => setIsLangDropdownOpen(!isLangDropdownOpen)}
-              className="flex items-center gap-2 px-3 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors"
+              className="flex items-center gap-2 px-3 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors cursor-pointer"
               aria-label={t('changeLanguage')}
             >
               <Globe className="w-4 h-4 text-slate-300" />
@@ -126,7 +138,7 @@ export default function Header({
                     <button
                       key={lang.code}
                       onClick={() => handleLanguageChange(lang.code)}
-                      className={`w-full flex items-center justify-between px-4 py-2.5 hover:bg-slate-50 transition-colors ${
+                      className={`w-full flex items-center justify-between px-4 py-2.5 hover:bg-slate-50 transition-colors cursor-pointer ${
                         isSelected ? 'bg-indigo-50' : ''
                       }`}
                     >
@@ -146,11 +158,28 @@ export default function Header({
             )}
           </div>
 
+          {/* Load DOCX Button */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".docx"
+            onChange={handleFileChange}
+            className="hidden"
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors cursor-pointer"
+            title={t('loadDocx')}
+          >
+            <Upload className="w-4 h-4" />
+            <span className="text-sm font-medium hidden sm:inline">{t('loadDocx')}</span>
+          </button>
+
           {/* Download Button */}
           <button
             onClick={onDownload}
             disabled={isDownloading}
-            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-800 disabled:cursor-not-allowed rounded-lg transition-colors"
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-800 disabled:cursor-not-allowed rounded-lg transition-colors cursor-pointer"
           >
             {isDownloading ? (
               <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />

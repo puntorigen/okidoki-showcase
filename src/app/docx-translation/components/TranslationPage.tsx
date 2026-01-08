@@ -279,6 +279,20 @@ function TranslationPageInner() {
     orchestrator.discardIncomplete();
   }, []);
 
+  // Handle loading a DOCX file
+  const handleLoadFile = useCallback(async (file: File) => {
+    const viewer = viewerRef.current;
+    if (!viewer) return;
+
+    try {
+      await viewer.setSource(file);
+      setDocumentState({ createdByAI: false, userHasEdited: false });
+      console.log('[Load] DOCX loaded:', file.name);
+    } catch (error) {
+      console.error('[Load] Failed to load DOCX:', error);
+    }
+  }, []);
+
   return (
     <div className="h-screen flex flex-col bg-slate-50">
       {/* Header */}
@@ -288,6 +302,7 @@ function TranslationPageInner() {
         onSpecializationChange={handleSpecializationChange}
         onDownload={handleDownload}
         isDownloading={isDownloading}
+        onLoadFile={handleLoadFile}
       />
 
       {/* Main Content */}

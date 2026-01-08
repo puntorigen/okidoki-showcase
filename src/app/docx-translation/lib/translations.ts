@@ -7,6 +7,7 @@ interface Translations {
   subtitle: string;
   download: string;
   downloading: string;
+  loadDocx: string;
   changeLanguage: string;
   documentSummary: string;
   words: string;
@@ -34,6 +35,7 @@ export const translations: Record<Language, Translations> = {
     subtitle: 'AI-Powered Document Translation',
     download: 'Download',
     downloading: 'Downloading...',
+    loadDocx: 'Load DOCX',
     changeLanguage: 'Change language',
     
     // Summary Panel
@@ -72,6 +74,7 @@ export const translations: Record<Language, Translations> = {
     subtitle: 'Traducción de Documentos con IA',
     download: 'Descargar',
     downloading: 'Descargando...',
+    loadDocx: 'Cargar DOCX',
     changeLanguage: 'Cambiar idioma',
     
     // Summary Panel
