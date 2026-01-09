@@ -71,7 +71,11 @@ const TranslationViewer = forwardRef<TranslationViewerRef, TranslationViewerProp
       },
       acceptAllChanges: () => {
         if (editorRef.current) {
-          editorRef.current.acceptAllChanges();
+          try {
+            editorRef.current.acceptAllChanges();
+          } catch (e) {
+            console.warn('[TranslationViewer] acceptAllChanges not available:', e);
+          }
         }
       },
       isReady: () => {
