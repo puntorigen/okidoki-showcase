@@ -135,6 +135,7 @@ export class SegmentTranslator {
       : `SECTION: "${sectionTitle}"\n`;
 
     return `Translate text segments from ${sourceLanguage} to ${targetLanguage}.
+All output text must be in ${targetLanguage}.
 
 ${sectionContext}
 FORMAT ANNOTATIONS:

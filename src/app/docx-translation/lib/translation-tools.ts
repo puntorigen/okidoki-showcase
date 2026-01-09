@@ -317,6 +317,9 @@ Output ONLY HTML content. Use <h1> for title, <h2> for sections, <p> for paragra
         }
 
         try {
+          // Accept any pending track changes before translation
+          viewer.acceptAllChanges();
+          
           const documentJson = viewer.getContent();
           if (!documentJson) {
             return { success: false, error: 'No document to translate' };

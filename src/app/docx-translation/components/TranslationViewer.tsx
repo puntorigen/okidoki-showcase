@@ -28,6 +28,7 @@ export interface TranslationViewerRef {
   getContent: () => any;
   exportDocx: () => Promise<Blob>;
   resetComparison: () => void;
+  acceptAllChanges: () => void;
   isReady: () => boolean;
 }
 
@@ -66,6 +67,11 @@ const TranslationViewer = forwardRef<TranslationViewerRef, TranslationViewerProp
       resetComparison: () => {
         if (editorRef.current) {
           editorRef.current.resetComparison();
+        }
+      },
+      acceptAllChanges: () => {
+        if (editorRef.current) {
+          editorRef.current.acceptAllChanges();
         }
       },
       isReady: () => {
