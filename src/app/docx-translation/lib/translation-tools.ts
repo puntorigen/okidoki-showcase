@@ -317,8 +317,9 @@ Output ONLY HTML content. Use <h1> for title, <h2> for sections, <p> for paragra
         }
 
         try {
+          // TODO: Uncomment when docx-diff-editor properly implements acceptAllChanges
           // Accept any pending track changes before translation
-          viewer.acceptAllChanges();
+          // viewer.acceptAllChanges();
           
           const documentJson = viewer.getContent();
           if (!documentJson) {
@@ -369,9 +370,17 @@ Output ONLY HTML content. Use <h1> for title, <h2> for sections, <p> for paragra
                 return 'keep';
               },
             },
-            async (json) => {
+            (json) => {
               // Milestone update - refresh the visible document
-              await viewer.setSource(json);
+              // Use updateContent to preserve the original DOCX template (styles, numbering, etc.)
+              try {
+                viewer.updateContent(json);
+              } catch (err) {
+                console.error('[Translation] updateContent failed:', err);
+                console.error('[Translation] Original JSON:', JSON.stringify(documentJson, null, 2));
+                console.error('[Translation] Translated JSON:', JSON.stringify(json, null, 2));
+                throw err;
+              }
             }
           );
 

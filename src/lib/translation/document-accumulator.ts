@@ -108,7 +108,40 @@ export class DocumentAccumulator {
     // Apply translations to the document
     this.applyTranslations(document, translationsByNode);
 
+    // Sanitize list nodes to ensure valid attributes
+    this.sanitizeListNodes(document);
+
     return document;
+  }
+
+  /**
+   * Ensure list nodes have valid attributes to prevent rendering errors
+   */
+  private sanitizeListNodes(document: any): void {
+    if (!document.content) return;
+
+    const sanitize = (node: any) => {
+      if (node.type === 'orderedList') {
+        node.attrs = node.attrs || {};
+        if (node.attrs.listStyleType === null || node.attrs.listStyleType === undefined) {
+          node.attrs.listStyleType = 'decimal';
+        }
+        if (node.attrs.start === null || node.attrs.start === undefined) {
+          node.attrs.start = 1;
+        }
+      }
+      if (node.type === 'bulletList') {
+        node.attrs = node.attrs || {};
+        if (node.attrs.listStyleType === null || node.attrs.listStyleType === undefined) {
+          node.attrs.listStyleType = 'disc';
+        }
+      }
+      if (node.content) {
+        node.content.forEach(sanitize);
+      }
+    };
+
+    document.content.forEach(sanitize);
   }
 
   /**
@@ -138,34 +171,33 @@ export class DocumentAccumulator {
   }
 
   /**
-   * Apply translation to a single node
+   * Apply translation to a single node by traversing its structure
+   * and only updating the .text property of text nodes.
+   * This preserves run wrappers, marks, attrs, and all other structure.
    */
   private applyNodeTranslation(node: any, translation: TranslatedParagraph): void {
     if (!node.content || !translation.segments.length) return;
 
-    // Rebuild the content array with translated text
-    const newContent: any[] = [];
+    let segmentIndex = 0;
 
-    for (const segment of translation.segments) {
-      const textNode: any = {
-        type: 'text',
-        text: segment.translatedText,
-      };
-
-      // Apply marks (formatting)
-      if (segment.marks && segment.marks.length > 0) {
-        textNode.marks = segment.marks.map(m => ({
-          type: m.type,
-          ...(m.attrs ? { attrs: m.attrs } : {}),
-        }));
+    // Recursively traverse and update text nodes in place
+    const updateTextNodes = (content: any[]): void => {
+      for (const child of content) {
+        if (child.type === 'text' && segmentIndex < translation.segments.length) {
+          // Found a text node - update only its text property
+          child.text = translation.segments[segmentIndex].translatedText;
+          segmentIndex++;
+        } else if (child.type === 'run' && child.content) {
+          // Run node - traverse into it to find text nodes
+          updateTextNodes(child.content);
+        } else if (child.content) {
+          // Other container nodes - traverse into them
+          updateTextNodes(child.content);
+        }
       }
+    };
 
-      newContent.push(textNode);
-    }
-
-    if (newContent.length > 0) {
-      node.content = newContent;
-    }
+    updateTextNodes(node.content);
   }
 
   /**

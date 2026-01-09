@@ -42,10 +42,13 @@ export class SegmentTranslator {
       return null;
     }
 
-    try {
-      // Build translation request
+    // Count expected segments
+    const expectedCount = batch.paragraphs.reduce(
+      (sum, p) => sum + p.segments.length, 0
+    );
+
+    const doTranslation = async () => {
       const segmentsList = this.buildSegmentsList(batch);
-      
       const prompt = this.buildTranslationPrompt(
         sourceLanguage,
         targetLanguage,
@@ -54,7 +57,7 @@ export class SegmentTranslator {
         batch.partNumber
       );
 
-      const result = await widget.ask({
+      return widget.ask({
         prompt,
         context: `${this.industryContext}${this.glossaryPrompt}\n\nSEGMENTS TO TRANSLATE:\n${segmentsList}`,
         output: widget.helpers ? {
@@ -71,12 +74,32 @@ export class SegmentTranslator {
             })
           ),
         } : undefined,
-        maxTokens: batch.wordCount * 3, // Allow for expansion
+        maxTokens: batch.wordCount * 3,
       });
+    };
+
+    try {
+      let result = await doTranslation();
 
       if (!result.success || !result.result) {
         console.error('[SegmentTranslator] Translation failed:', result.error);
         return null;
+      }
+
+      const returnedCount = result.result.translations?.length || 0;
+
+      // Retry once if segment count doesn't match
+      if (returnedCount !== expectedCount) {
+        console.warn(`[SegmentTranslator] Segment count mismatch (${returnedCount}/${expectedCount}), retrying...`);
+        const retryResult = await doTranslation();
+        
+        if (retryResult.success && retryResult.result) {
+          const retryCount = retryResult.result.translations?.length || 0;
+          // Use retry if it's closer to expected
+          if (Math.abs(retryCount - expectedCount) < Math.abs(returnedCount - expectedCount)) {
+            result = retryResult;
+          }
+        }
       }
 
       // Parse response and rebuild paragraphs

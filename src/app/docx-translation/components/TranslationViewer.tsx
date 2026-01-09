@@ -24,6 +24,7 @@ interface TranslationViewerProps {
 
 export interface TranslationViewerRef {
   setSource: (content: DocxContent) => Promise<void>;
+  updateContent: (json: any) => void;
   compareWith: (content: DocxContent) => Promise<any>;
   getContent: () => any;
   exportDocx: () => Promise<Blob>;
@@ -44,6 +45,11 @@ const TranslationViewer = forwardRef<TranslationViewerRef, TranslationViewerProp
       setSource: async (content: DocxContent) => {
         if (editorRef.current) {
           await editorRef.current.setSource(content);
+        }
+      },
+      updateContent: (json: any) => {
+        if (editorRef.current) {
+          editorRef.current.updateContent(json);
         }
       },
       compareWith: async (content: DocxContent) => {
