@@ -197,10 +197,11 @@ export interface TranslationCallbacks {
 // =============================================================================
 
 export interface TranslationOptions {
-  sourceLanguage: string;
+  sourceLanguage?: string;  // Optional - will be auto-detected if not provided
   targetLanguage: string;
   useRag?: boolean;
   skipIndustryDetection?: boolean;
+  skipLanguageDetection?: boolean;  // Skip auto-detection if sourceLanguage provided
   resumeFrom?: PersistedTranslationState;
 }
 

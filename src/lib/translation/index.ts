@@ -8,6 +8,7 @@ export * from './translation-types';
 
 // Core modules
 export { industryDetector, INDUSTRY_TERMINOLOGY } from './industry-detector';
+export { languageDetector, LanguageDetector } from './language-detector';
 export { ragTerminology, RagTerminologyLookup } from './rag-terminology';
 export { terminologyCache, TerminologyCache } from './terminology-cache';
 export { createGlossaryManager, GlossaryManager } from './glossary-manager';

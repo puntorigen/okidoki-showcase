@@ -290,23 +290,17 @@ Output ONLY HTML content. Use <h1> for title, <h2> for sections, <p> for paragra
     {
       name: 'translate_document',
       description:
-        'Translate the entire document from one language to another while preserving all formatting, tables, and structure. This tool handles large documents (50-100+ pages) with smart batching and term consistency.',
+        'Translate the entire document to another language while preserving all formatting, tables, and structure. The source language is auto-detected. This tool handles large documents (50-100+ pages) with smart batching and term consistency.',
       timeout: 600000, // 10 minutes (default: 60s) - needed for large document translations
       input: {
-        source_language: {
-          type: 'string',
-          description: 'Source language (e.g., "English", "Spanish", "French")',
-        },
         target_language: {
           type: 'string',
           description: 'Target language to translate to (e.g., "Spanish", "English", "French")',
         },
       },
       handler: async ({
-        source_language,
         target_language,
       }: {
-        source_language: string;
         target_language: string;
       }) => {
         const viewer = getViewer();
@@ -336,11 +330,10 @@ Output ONLY HTML content. Use <h1> for title, <h2> for sections, <p> for paragra
             isSpanish ? 'Iniciando traducción...' : 'Starting translation...'
           );
 
-          // Start translation
+          // Start translation (source language is auto-detected)
           await orchestrator.translate(
             documentJson,
             {
-              sourceLanguage: source_language,
               targetLanguage: target_language,
               useRag: true,
             },
@@ -387,7 +380,7 @@ Output ONLY HTML content. Use <h1> for title, <h2> for sections, <p> for paragra
 
           return {
             success: true,
-            message: `Translation from ${source_language} to ${target_language} complete.`,
+            message: `Translation to ${target_language} complete.`,
           };
         } catch (error) {
           console.error('[Tool] translate_document error:', error);

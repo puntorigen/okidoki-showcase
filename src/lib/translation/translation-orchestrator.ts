@@ -19,6 +19,7 @@ import {
   initialTranslationState,
 } from './translation-types';
 import { industryDetector } from './industry-detector';
+import { languageDetector } from './language-detector';
 import { ragTerminology } from './rag-terminology';
 import { createGlossaryManager, GlossaryManager } from './glossary-manager';
 import { batchingEngine } from './batching-engine';
@@ -151,17 +152,25 @@ export class TranslationOrchestrator {
     const textContent = this.extractTextContent(documentJson);
     this.documentId = TranslationPersistence.generateDocumentId(textContent);
 
-    // Initialize state
+    // Initialize state (sourceLanguage may be empty until detected)
     this.state = {
       ...initialTranslationState,
       status: 'preparing',
-      sourceLanguage: options.sourceLanguage,
+      sourceLanguage: options.sourceLanguage || '',
       targetLanguage: options.targetLanguage,
     };
 
     this.reportProgress();
 
     try {
+      // Phase 0: Detect source language if not provided
+      if (!options.sourceLanguage && !options.skipLanguageDetection) {
+        console.log('[Orchestrator] Detecting source language...');
+        const langResult = await languageDetector.detect(textContent, widget);
+        this.state.sourceLanguage = langResult.language;
+        console.log(`[Orchestrator] Detected source language: ${langResult.language} (${Math.round(langResult.confidence * 100)}%)`);
+      }
+
       // Phase 1: Detect industry
       if (!options.skipIndustryDetection) {
         console.log('[Orchestrator] Detecting document industry...');
@@ -175,7 +184,7 @@ export class TranslationOrchestrator {
         console.log('[Orchestrator] Looking up RAG terminology...');
         const ragResult = await ragTerminology.lookup(
           this.state.industry as any,
-          options.sourceLanguage,
+          this.state.sourceLanguage,
           options.targetLanguage,
           widget
         );
@@ -193,7 +202,7 @@ export class TranslationOrchestrator {
         (this.state.industry as any) || 'general',
         options.targetLanguage
       );
-      await this.glossaryManager.extractTerms(textContent, options.sourceLanguage, widget);
+      await this.glossaryManager.extractTerms(textContent, this.state.sourceLanguage, widget);
 
       // Phase 4: Create batches
       console.log('[Orchestrator] Creating translation batches...');
