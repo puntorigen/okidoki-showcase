@@ -11,6 +11,29 @@ import {
   TranslationProgress,
 } from '@/lib/translation';
 
+// Cancel dialog resolver - used to connect UI dialog with orchestrator callback
+let cancelChoiceResolver: ((choice: 'keep' | 'restore') => void) | null = null;
+
+/**
+ * Request translation cancellation
+ * Call this when user clicks the cancel button
+ */
+export function requestTranslationCancel(): void {
+  const orchestrator = getTranslationOrchestrator();
+  orchestrator.cancel();
+}
+
+/**
+ * Resolve the cancel choice after user picks from dialog
+ * Call this when user clicks "Keep" or "Restore" in the cancel dialog
+ */
+export function resolveCancelChoice(choice: 'keep' | 'restore'): void {
+  if (cancelChoiceResolver) {
+    cancelChoiceResolver(choice);
+    cancelChoiceResolver = null;
+  }
+}
+
 // Virtual document structure for building content in memory
 interface VirtualDocument {
   title: string;
@@ -331,7 +354,7 @@ Output ONLY HTML content. Use <h1> for title, <h2> for sections, <p> for paragra
           );
 
           // Start translation (source language is auto-detected)
-          await orchestrator.translate(
+          const result = await orchestrator.translate(
             documentJson,
             {
               targetLanguage: target_language,
@@ -359,9 +382,11 @@ Output ONLY HTML content. Use <h1> for title, <h2> for sections, <p> for paragra
                 widget.setToolNotification?.(null);
               },
               onCancelRequest: async () => {
-                // This will be called when user cancels
-                // Return 'keep' to keep partial translation, 'restore' to restore original
-                return 'keep';
+                // Wait for user to make a choice via the cancel dialog
+                // The dialog will call resolveCancelChoice() when user picks
+                return new Promise<'keep' | 'restore'>((resolve) => {
+                  cancelChoiceResolver = resolve;
+                });
               },
             },
             (json) => {
@@ -378,10 +403,31 @@ Output ONLY HTML content. Use <h1> for title, <h2> for sections, <p> for paragra
             }
           );
 
-          return {
-            success: true,
-            message: `Translation to ${target_language} complete.`,
-          };
+          // Clear notification
+          widget.setToolNotification?.(null);
+
+          // Return appropriate message based on result
+          if (result.status === 'completed') {
+            return {
+              success: true,
+              message: `Translation from ${result.sourceLanguage} to ${result.targetLanguage} completed successfully.`,
+            };
+          } else if (result.status === 'cancelled') {
+            const choiceMessage = result.userChoice === 'keep'
+              ? 'User chose to keep the partial translation.'
+              : 'User chose to restore the original document.';
+            return {
+              success: true,
+              message: `Translation cancelled at ${result.progress}% progress. ${choiceMessage}`,
+              cancelled: true,
+              userChoice: result.userChoice,
+            };
+          } else {
+            return {
+              success: false,
+              error: result.error || 'Translation failed',
+            };
+          }
         } catch (error) {
           console.error('[Tool] translate_document error:', error);
           widget.setToolNotification?.(null);

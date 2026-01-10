@@ -9,7 +9,7 @@ import TranslationOverlay from './TranslationOverlay';
 import TranslationResumeDialog from './TranslationResumeDialog';
 import TranslationCancelDialog from './TranslationCancelDialog';
 import { specializations, defaultSpecialization } from '../lib/specializations';
-import { createTranslationTools, getTranslationOrchestrator, setTranslationProgressCallback } from '../lib/translation-tools';
+import { createTranslationTools, getTranslationOrchestrator, setTranslationProgressCallback, requestTranslationCancel, resolveCancelChoice } from '../lib/translation-tools';
 import { initialDocumentState } from '../lib/document-state';
 import { DocumentState, DocumentSummary, Specialization } from '../types';
 import { LanguageProvider, useLanguage } from '../lib/LanguageContext';
@@ -212,6 +212,8 @@ function TranslationPageInner() {
 
   // Translation cancel handler
   const handleCancelTranslation = useCallback(() => {
+    // Request cancellation from orchestrator and show dialog
+    requestTranslationCancel();
     setShowCancelDialog(true);
   }, []);
 
@@ -258,25 +260,26 @@ function TranslationPageInner() {
 
   // Keep translated content
   const handleKeepTranslated = useCallback(() => {
+    // Resolve the cancel choice - this unblocks the orchestrator
+    resolveCancelChoice('keep');
     setShowCancelDialog(false);
     setTranslationProgress(null);
-    const orchestrator = getTranslationOrchestrator();
-    orchestrator.discardIncomplete();
   }, []);
 
   // Restore original document
-  const handleRestoreOriginal = useCallback(async () => {
+  const handleRestoreOriginal = useCallback(() => {
+    // Resolve the cancel choice - this unblocks the orchestrator
+    resolveCancelChoice('restore');
     setShowCancelDialog(false);
     setTranslationProgress(null);
     
+    // Restore the original document using updateContent (preserves template)
     const orchestrator = getTranslationOrchestrator();
     const persistedState = orchestrator.checkForIncompleteTranslation();
     
     if (persistedState?.originalDocumentJson && viewerRef.current) {
-      await viewerRef.current.setSource(persistedState.originalDocumentJson);
+      viewerRef.current.updateContent(persistedState.originalDocumentJson);
     }
-    
-    orchestrator.discardIncomplete();
   }, []);
 
   // Handle loading a DOCX file

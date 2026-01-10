@@ -14,6 +14,7 @@ import {
   TranslationProgress,
   TranslationOptions,
   TranslationCallbacks,
+  TranslationResult,
   PersistedTranslationState,
   DocumentBatch,
   initialTranslationState,
@@ -38,6 +39,8 @@ export class TranslationOrchestrator {
   private widget: any = null;
   private callbacks: TranslationCallbacks | null = null;
   private isCancelled: boolean = false;
+  private cancelChoice: 'keep' | 'restore' | null = null;
+  private cancelPromiseResolve: ((choice: 'keep' | 'restore') => void) | null = null;
 
   constructor() {
     this.glossaryManager = createGlossaryManager();
@@ -141,11 +144,13 @@ export class TranslationOrchestrator {
     widget: any,
     callbacks: TranslationCallbacks,
     onDocumentUpdate: (json: any) => void
-  ): Promise<void> {
+  ): Promise<TranslationResult> {
     this.reset();
     this.widget = widget;
     this.callbacks = callbacks;
     this.isCancelled = false;
+    this.cancelChoice = null;
+    this.cancelPromiseResolve = null;
     this.originalDocumentJson = documentJson;
 
     // Generate document ID for persistence
@@ -214,7 +219,13 @@ export class TranslationOrchestrator {
         this.state.status = 'error';
         this.state.error = 'No translatable content found in the document';
         callbacks.onError('No translatable content found in the document');
-        return;
+        return {
+          status: 'error',
+          sourceLanguage: this.state.sourceLanguage,
+          targetLanguage: this.state.targetLanguage,
+          progress: 0,
+          error: 'No translatable content found in the document',
+        };
       }
 
       // Initialize accumulator
@@ -235,30 +246,76 @@ export class TranslationOrchestrator {
       this.state.status = 'translating';
       this.reportProgress();
 
+      // Create a promise that will resolve when user makes cancel choice
+      const cancelPromise = new Promise<'keep' | 'restore'>((resolve) => {
+        this.cancelPromiseResolve = resolve;
+      });
+
       await this.translateRemainingBatches();
+
+      // Check if we were cancelled
+      if (this.isCancelled) {
+        // Wait for user's choice (cancel() will resolve this)
+        const userChoice = this.cancelChoice || await cancelPromise;
+        const progress = this.getProgress();
+        
+        return {
+          status: 'cancelled',
+          sourceLanguage: this.state.sourceLanguage,
+          targetLanguage: this.state.targetLanguage,
+          progress: progress.percentage,
+          userChoice,
+        };
+      }
+
+      // Translation completed successfully
+      return {
+        status: 'completed',
+        sourceLanguage: this.state.sourceLanguage,
+        targetLanguage: this.state.targetLanguage,
+        progress: 100,
+      };
 
     } catch (error) {
       console.error('[Orchestrator] Translation failed:', error);
       this.state.status = 'error';
       this.state.error = String(error);
       callbacks.onError(String(error));
+      
+      return {
+        status: 'error',
+        sourceLanguage: this.state.sourceLanguage,
+        targetLanguage: this.state.targetLanguage,
+        progress: this.getProgress().percentage,
+        error: String(error),
+      };
     }
   }
 
   /**
    * Cancel the translation
+   * Called from UI when user clicks cancel button
    */
   async cancel(): Promise<void> {
+    if (this.isCancelled) return; // Already cancelling
+    
     this.isCancelled = true;
     this.state.status = 'paused';
+    console.log('[Orchestrator] Cancel requested');
 
     if (this.callbacks?.onCancelRequest) {
+      // Get user's choice (keep partial or restore original)
       const choice = await this.callbacks.onCancelRequest();
+      this.cancelChoice = choice;
+      console.log(`[Orchestrator] User chose to ${choice} after cancellation`);
+      
+      // Resolve the cancel promise so translate() can continue
+      if (this.cancelPromiseResolve) {
+        this.cancelPromiseResolve(choice);
+      }
       
       if (choice === 'restore') {
-        // Restore original document
         translationPersistence.clear();
-        this.reset();
       } else {
         // Keep translated content - document is already showing partial translation
         translationPersistence.clear();
@@ -403,6 +460,8 @@ export class TranslationOrchestrator {
     this.originalDocumentJson = null;
     this.documentId = '';
     this.isCancelled = false;
+    this.cancelChoice = null;
+    this.cancelPromiseResolve = null;
   }
 
   /**

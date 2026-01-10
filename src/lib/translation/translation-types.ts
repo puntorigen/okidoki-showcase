@@ -193,6 +193,21 @@ export interface TranslationCallbacks {
 }
 
 // =============================================================================
+// TRANSLATION RESULT
+// =============================================================================
+
+export type TranslationResultStatus = 'completed' | 'cancelled' | 'error';
+
+export interface TranslationResult {
+  status: TranslationResultStatus;
+  sourceLanguage: string;
+  targetLanguage: string;
+  progress: number;  // 0-100
+  userChoice?: 'keep' | 'restore';  // Only set when cancelled
+  error?: string;  // Only set when error
+}
+
+// =============================================================================
 // ORCHESTRATOR OPTIONS
 // =============================================================================
 
