@@ -291,6 +291,7 @@ Output ONLY HTML content. Use <h1> for title, <h2> for sections, <p> for paragra
       name: 'translate_document',
       description:
         'Translate the entire document from one language to another while preserving all formatting, tables, and structure. This tool handles large documents (50-100+ pages) with smart batching and term consistency.',
+      timeout: 600000, // 10 minutes (default: 60s) - needed for large document translations
       input: {
         source_language: {
           type: 'string',
