@@ -10,22 +10,41 @@ export interface LanguageDetectionResult {
 
 export class LanguageDetector {
   /**
+   * Create a representative sample from the document text
+   * Takes excerpts from beginning, middle, and end for better coverage
+   */
+  private createSample(text: string): string {
+    const CHUNK_SIZE = 600;
+    const TOTAL_THRESHOLD = 2000;
+
+    if (text.length < TOTAL_THRESHOLD) {
+      return text;
+    }
+
+    const start = text.substring(0, CHUNK_SIZE);
+    const middleStart = Math.floor((text.length - CHUNK_SIZE) / 2);
+    const middle = text.substring(middleStart, middleStart + CHUNK_SIZE);
+    const end = text.substring(text.length - CHUNK_SIZE);
+
+    return `${start}\n[...]\n${middle}\n[...]\n${end}`;
+  }
+
+  /**
    * Detect language using AI
-   * Analyzes the first portion of document text to determine language
+   * Analyzes excerpts from multiple positions in the document
    */
   async detect(
     documentText: string,
     widget: any
   ): Promise<LanguageDetectionResult> {
     try {
-      // Sample first ~2000 chars for efficient detection
-      const sample = documentText.substring(0, 2000);
+      const sample = this.createSample(documentText);
 
       const result = await widget.ask({
-        prompt: `Detect the language of this document. Return the language name in English (e.g., "Spanish", "English", "French", "German", "Portuguese", "Italian", "Chinese", "Japanese", "Korean", "Arabic", "Russian", etc.)`,
-        context: `DOCUMENT TEXT SAMPLE:\n${sample}`,
+        prompt: `What language is this text written in? Return the language name in English.`,
+        context: `TEXT:\n${sample}`,
         output: widget.helpers ? {
-          language: widget.helpers.string('The detected language name in English'),
+          language: widget.helpers.string('The language name in English'),
           confidence: widget.helpers.number('Confidence score from 0 to 100'),
         } : undefined,
       });
@@ -33,14 +52,13 @@ export class LanguageDetector {
       if (result.success && result.result) {
         return {
           language: result.result.language,
-          confidence: (result.result.confidence ?? 90) / 100, // Normalize to 0-1
+          confidence: (result.result.confidence ?? 90) / 100,
         };
       }
     } catch (error) {
       console.warn('[LanguageDetector] Detection failed:', error);
     }
 
-    // Fallback - return unknown
     return {
       language: 'Unknown',
       confidence: 0,
