@@ -11,6 +11,7 @@ interface Translations {
   changeLanguage: string;
   documentSummary: string;
   words: string;
+  pages: string;
   sections: string;
   noSections: string;
   untitled: string;
@@ -20,6 +21,7 @@ interface Translations {
   failedToLoad: string;
   // Translation-specific
   translating: string;
+  translateTo: string;
   translateDocument: string;
   translationComplete: string;
   translationProgress: string;
@@ -27,6 +29,47 @@ interface Translations {
   cancelTranslation: string;
   keepTranslated: string;
   restoreOriginal: string;
+  // Contextual tips
+  tipEmpty: string;
+  tipHasContent: string;
+  tipTranslating: string;
+  tipComplete: string;
+  tipReverted: string;
+  // Summary
+  detectedLanguage: string;
+  translatedFrom: string;
+  revertToOriginal: string;
+  summary: string;
+  generatingSummary: string;
+  noSummaryYet: string;
+  // Quick actions
+  createContract: string;
+  writeReport: string;
+  askForHelp: string;
+  // Translation overlay
+  translatingDocument: string;
+  analyzingDocument: string;
+  translationError: string;
+  stopTranslation: string;
+  overlayHint: string;
+  part: string;
+  of: string;
+  // Document properties
+  editProperties: string;
+  documentProperties: string;
+  title: string;
+  author: string;
+  subject: string;
+  keywords: string;
+  documentTitle: string;
+  authorName: string;
+  documentSubject: string;
+  keywordsPlaceholder: string;
+  created: string;
+  modified: string;
+  by: string;
+  cancel: string;
+  save: string;
 }
 
 export const translations: Record<Language, Translations> = {
@@ -39,8 +82,9 @@ export const translations: Record<Language, Translations> = {
     changeLanguage: 'Change language',
     
     // Summary Panel
-    documentSummary: 'Document Summary',
+    documentSummary: 'Document',
     words: 'Words',
+    pages: 'Pages',
     sections: 'Sections',
     noSections: 'No sections yet. Load a document or ask the AI to create one.',
     untitled: '(Untitled)',
@@ -61,13 +105,58 @@ export const translations: Record<Language, Translations> = {
     
     // Translation-specific
     translating: 'Translating...',
-    translateDocument: 'Translate Document',
+    translateTo: 'Translate to',
+    translateDocument: 'Translate',
     translationComplete: 'Translation complete!',
     translationProgress: 'Translation Progress',
     resumeTranslation: 'Resume Translation',
     cancelTranslation: 'Cancel Translation',
     keepTranslated: 'Keep translated content',
     restoreOriginal: 'Restore original document',
+    
+    // Contextual tips
+    tipEmpty: 'Start typing, drop a DOCX file, or ask the assistant to help',
+    tipHasContent: 'Ready to translate! Click "Translate" or ask the assistant',
+    tipTranslating: 'Translation in progress — you can see the document updating',
+    tipComplete: 'Translation complete! Click revert in sidebar if needed',
+    tipReverted: 'Original document restored',
+    
+    // Summary
+    detectedLanguage: 'detected',
+    translatedFrom: 'from',
+    revertToOriginal: 'Revert to original',
+    summary: 'Summary',
+    generatingSummary: 'Generating summary...',
+    noSummaryYet: 'Add content to see a summary',
+    
+    // Quick actions
+    createContract: 'Create a contract',
+    writeReport: 'Write a report',
+    askForHelp: 'Help',
+    // Translation overlay
+    translatingDocument: 'Translating document',
+    analyzingDocument: 'Analyzing document',
+    translationError: 'Translation error',
+    stopTranslation: 'Stop Translation',
+    overlayHint: 'You can see the document updating in real-time behind this overlay',
+    part: 'Part',
+    of: 'of',
+    // Document properties
+    editProperties: 'Edit properties',
+    documentProperties: 'Document Properties',
+    title: 'Title',
+    author: 'Author',
+    subject: 'Subject',
+    keywords: 'Keywords',
+    documentTitle: 'Document title',
+    authorName: 'Author name',
+    documentSubject: 'Document subject',
+    keywordsPlaceholder: 'report, quarterly, finance',
+    created: 'Created',
+    modified: 'Modified',
+    by: 'by',
+    cancel: 'Cancel',
+    save: 'Save',
   },
   es: {
     // Header
@@ -78,8 +167,9 @@ export const translations: Record<Language, Translations> = {
     changeLanguage: 'Cambiar idioma',
     
     // Summary Panel
-    documentSummary: 'Resumen del Documento',
+    documentSummary: 'Documento',
     words: 'Palabras',
+    pages: 'Páginas',
     sections: 'Secciones',
     noSections: 'Sin secciones aún. Carga un documento o pídele a la IA que cree uno.',
     untitled: '(Sin título)',
@@ -100,13 +190,58 @@ export const translations: Record<Language, Translations> = {
     
     // Translation-specific
     translating: 'Traduciendo...',
-    translateDocument: 'Traducir Documento',
+    translateTo: 'Traducir a',
+    translateDocument: 'Traducir',
     translationComplete: '¡Traducción completa!',
     translationProgress: 'Progreso de Traducción',
     resumeTranslation: 'Reanudar Traducción',
     cancelTranslation: 'Cancelar Traducción',
     keepTranslated: 'Mantener contenido traducido',
     restoreOriginal: 'Restaurar documento original',
+    
+    // Contextual tips
+    tipEmpty: 'Escribe, arrastra un DOCX, o pídele ayuda al asistente',
+    tipHasContent: '¡Listo para traducir! Haz clic en "Traducir" o pregunta al asistente',
+    tipTranslating: 'Traducción en progreso — puedes ver el documento actualizándose',
+    tipComplete: '¡Traducción completa! Haz clic en revertir en el panel si lo necesitas',
+    tipReverted: 'Documento original restaurado',
+    
+    // Summary
+    detectedLanguage: 'detectado',
+    translatedFrom: 'desde',
+    revertToOriginal: 'Revertir al original',
+    summary: 'Resumen',
+    generatingSummary: 'Generando resumen...',
+    noSummaryYet: 'Añade contenido para ver un resumen',
+    
+    // Quick actions
+    createContract: 'Crear un contrato',
+    writeReport: 'Escribir un informe',
+    askForHelp: 'Ayuda',
+    // Translation overlay
+    translatingDocument: 'Traduciendo documento',
+    analyzingDocument: 'Analizando documento',
+    translationError: 'Error de traducción',
+    stopTranslation: 'Detener traducción',
+    overlayHint: 'Puedes ver el documento actualizándose en tiempo real detrás de esta ventana',
+    part: 'Parte',
+    of: 'de',
+    // Document properties
+    editProperties: 'Editar propiedades',
+    documentProperties: 'Propiedades del Documento',
+    title: 'Título',
+    author: 'Autor',
+    subject: 'Asunto',
+    keywords: 'Palabras clave',
+    documentTitle: 'Título del documento',
+    authorName: 'Nombre del autor',
+    documentSubject: 'Asunto del documento',
+    keywordsPlaceholder: 'informe, trimestral, finanzas',
+    created: 'Creado',
+    modified: 'Modificado',
+    by: 'por',
+    cancel: 'Cancelar',
+    save: 'Guardar',
   },
 };
 

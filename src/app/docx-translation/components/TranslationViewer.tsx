@@ -5,7 +5,7 @@
  * Uses docx-diff-editor for document viewing/editing with translation support.
  */
 
-import { useRef, useState, forwardRef, useImperativeHandle } from 'react';
+import { useRef, useState, forwardRef, useImperativeHandle, useEffect, useCallback } from 'react';
 import { DocxDiffEditor, DocxDiffEditorRef, DocxContent } from 'docx-diff-editor';
 import 'docx-diff-editor/styles.css';
 import { useLanguage } from '../lib/LanguageContext';
@@ -22,11 +22,23 @@ interface TranslationViewerProps {
   documentState: DocumentState;
 }
 
+export interface DocumentProperties {
+  title?: string;
+  author?: string;
+  subject?: string;
+  keywords?: string;
+  created?: Date;
+  modified?: Date;
+}
+
 export interface TranslationViewerRef {
   setSource: (content: DocxContent) => Promise<void>;
   updateContent: (json: any) => void;
   compareWith: (content: DocxContent) => Promise<any>;
   getContent: () => any;
+  getPages: () => number;
+  getProperties: () => Promise<DocumentProperties | null>;
+  setProperties: (props: Partial<DocumentProperties>) => Promise<void>;
   exportDocx: () => Promise<Blob>;
   resetComparison: () => void;
   acceptAllChanges: () => void;
@@ -64,6 +76,23 @@ const TranslationViewer = forwardRef<TranslationViewerRef, TranslationViewerProp
         }
         return null;
       },
+      getPages: () => {
+        if (editorRef.current) {
+          return editorRef.current.getPages?.() || 1;
+        }
+        return 1;
+      },
+      getProperties: async () => {
+        if (editorRef.current?.getProperties) {
+          return await editorRef.current.getProperties();
+        }
+        return null;
+      },
+      setProperties: async (props: Partial<DocumentProperties>) => {
+        if (editorRef.current?.setProperties) {
+          await editorRef.current.setProperties(props);
+        }
+      },
       exportDocx: async () => {
         if (editorRef.current) {
           return await editorRef.current.exportDocx();
@@ -99,10 +128,12 @@ const TranslationViewer = forwardRef<TranslationViewerRef, TranslationViewerProp
       // Update summary when source is loaded
       const textContent = extractTextContent(json);
       const wordCount = textContent.split(/\s+/).filter((w: string) => w.length > 0).length;
+      const pageCount = editorRef.current?.getPages?.() || 1;
       const sections = extractSections(json);
       
       onSummaryUpdate({
         wordCount,
+        pageCount,
         sections,
       });
       
@@ -157,6 +188,41 @@ const TranslationViewer = forwardRef<TranslationViewerRef, TranslationViewerProp
       traverse(json);
       return sections;
     };
+
+    // Track last word count to detect changes
+    const lastWordCountRef = useRef<number>(0);
+
+    // Update summary from current content
+    const updateSummaryFromContent = useCallback(() => {
+      if (!editorRef.current || isLoading) return;
+      
+      const json = editorRef.current.getContent();
+      if (!json) return;
+      
+      const textContent = extractTextContent(json);
+      const wordCount = textContent.split(/\s+/).filter((w: string) => w.length > 0).length;
+      
+      // Only update if word count changed
+      if (wordCount !== lastWordCountRef.current) {
+        lastWordCountRef.current = wordCount;
+        const pageCount = editorRef.current.getPages?.() || 1;
+        const sections = extractSections(json);
+        onSummaryUpdate({ wordCount, pageCount, sections });
+        
+        // Mark as user edited if content increased from typing
+        if (wordCount > 0) {
+          onDocumentStateChange(prev => ({ ...prev, userHasEdited: true }));
+        }
+      }
+    }, [isLoading, onSummaryUpdate, onDocumentStateChange]);
+
+    // Poll for content changes (user typing)
+    useEffect(() => {
+      if (isLoading) return;
+      
+      const interval = setInterval(updateSummaryFromContent, 1000);
+      return () => clearInterval(interval);
+    }, [isLoading, updateSummaryFromContent]);
 
     // Show error state
     if (error) {

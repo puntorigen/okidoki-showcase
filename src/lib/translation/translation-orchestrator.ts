@@ -395,6 +395,9 @@ export class TranslationOrchestrator {
       this.state.completedBatchIndices.push(i);
       this.state.completedBatches = this.state.completedBatchIndices.length;
 
+      // Report progress immediately after batch completes
+      this.reportProgress();
+
       // Update glossary with any new terms
       this.glossaryManager.updateFromBatch(result.glossaryAdditions);
       this.state.glossary = this.glossaryManager.getGlossary();
@@ -446,7 +449,9 @@ export class TranslationOrchestrator {
    * Report progress to callback
    */
   private reportProgress(): void {
-    this.callbacks?.onProgress(this.getProgress());
+    const progress = this.getProgress();
+    console.log(`[Orchestrator] Progress: ${progress.percentage}% (${progress.completedBatches}/${progress.totalBatches}) - ${progress.status}`);
+    this.callbacks?.onProgress(progress);
   }
 
   /**

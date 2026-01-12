@@ -16,6 +16,7 @@ export interface DocumentHeading {
 
 export interface DocumentSummary {
   wordCount: number;
+  pageCount: number;
   sections: DocumentHeading[];
 }
 

@@ -82,6 +82,7 @@ type TranslationEventCallback = (progress: TranslationProgress) => void;
 let progressCallback: TranslationEventCallback | null = null;
 
 export function setTranslationProgressCallback(callback: TranslationEventCallback | null) {
+  console.log('[TranslationTools] Setting progress callback:', callback ? 'function' : 'null');
   progressCallback = callback;
 }
 
@@ -313,12 +314,12 @@ Output ONLY HTML content. Use <h1> for title, <h2> for sections, <p> for paragra
     {
       name: 'translate_document',
       description:
-        'Translate the entire document to another language while preserving all formatting, tables, and structure. The source language is auto-detected. This tool handles large documents (50-100+ pages) with smart batching and term consistency.',
+        'Translate a document to another language. USE THIS TOOL whenever the user asks to translate, convert, or change the document language. Triggers include: "translate this document", "translate to Spanish", "convert to French", "change language to German", "make it in English", etc. Preserves all formatting, tables, and structure. Source language is auto-detected. Handles large documents (50-100+ pages) with smart batching.',
       timeout: 600000, // 10 minutes (default: 60s) - needed for large document translations
       input: {
         target_language: {
           type: 'string',
-          description: 'Target language to translate to (e.g., "Spanish", "English", "French")',
+          description: 'The target language name in English (e.g., "Spanish", "English", "French", "German", "Portuguese", "Italian", "Chinese", "Japanese")',
         },
       },
       handler: async ({
@@ -363,6 +364,8 @@ Output ONLY HTML content. Use <h1> for title, <h2> for sections, <p> for paragra
             widget,
             {
               onProgress: (progress) => {
+                console.log(`[TranslationTools] onProgress called: ${progress.percentage}% (${progress.completedBatches}/${progress.totalBatches})`);
+                
                 // Update notification with progress
                 const message = isSpanish
                   ? `Traduciendo: ${progress.percentage}% (${progress.currentSection || '...'})`
@@ -370,7 +373,12 @@ Output ONLY HTML content. Use <h1> for title, <h2> for sections, <p> for paragra
                 widget.setToolNotification?.(message);
                 
                 // Emit progress for overlay
-                progressCallback?.(progress);
+                if (progressCallback) {
+                  console.log('[TranslationTools] Calling progressCallback');
+                  progressCallback(progress);
+                } else {
+                  console.warn('[TranslationTools] progressCallback is null!');
+                }
               },
               onComplete: async () => {
                 // Document already updated via milestone callbacks

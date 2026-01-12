@@ -1,0 +1,27 @@
+{
+  "name": "Okidoki.chat Showcase",
+  "short_name": "Okidoki.chat Showcase",
+  "description": "Advanced use cases and integration examples for Okidoki AI Chat Widget. Explore document translation, AI-assisted editing, and more.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "theme_color": "#2B88B8",
+  "background_color": "#ffffff",
+  "icons": [
+    {
+      "src": "/web-app-manifest-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/web-app-manifest-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["business", "productivity"],
+  "lang": "en-US"
+}

@@ -63,17 +63,30 @@ declare global {
       setToolNotification?: (message: string | null) => void;
       sendEmail?: (fields: Record<string, any>) => void;
       scheduleMeeting?: (meetingType?: string) => void;
+      // Widget control methods
+      openChat?: (options?: { mode?: 'text' | 'voice' | 'video' }) => { success: boolean; error?: string };
+      closeChat?: () => { success: boolean; error?: string };
+      insertMessage?: (text: string, options?: { send?: boolean }) => { success: boolean; error?: string };
+      clearInput?: () => { success: boolean; error?: string };
+      getMode?: () => { active: string; configured: string; available: string[]; isOpen: boolean } | null;
+      // Tool management
+      invokeTool?: <T>(name: string, args?: Record<string, any>) => Promise<T>;
+      getRegisteredTools?: () => any[];
       ask?: (params: {
         prompt: string;
         context?: string;
         maxTokens?: number;
+        temperature?: number;
         output?: Record<string, any>;
       }) => Promise<{ success: boolean; result?: any; error?: string }>;
       helpers?: {
         string: (desc: string) => any;
+        number: (desc: string) => any;
         boolean: (desc: string) => any;
         array: (schema: any, desc: string) => any;
-        object: (schema: Record<string, any>) => any;
+        object: (schema: Record<string, any>, desc?: string) => any;
+        enum_: (values: string[], desc: string) => any;
+        select: (values: string[], desc: string) => any;
       };
     };
   }

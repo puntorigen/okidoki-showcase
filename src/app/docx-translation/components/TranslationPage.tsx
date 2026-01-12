@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import Header from './Header';
-import TranslationViewer, { TranslationViewerRef } from './TranslationViewer';
+import TranslationViewer, { TranslationViewerRef, DocumentProperties } from './TranslationViewer';
 import SummaryPanel from './SummaryPanel';
 import TipBar from './TipBar';
 import TranslationOverlay from './TranslationOverlay';
@@ -15,13 +15,18 @@ import { DocumentState, DocumentSummary, Specialization } from '../types';
 import { LanguageProvider, useLanguage } from '../lib/LanguageContext';
 import { TranslationProgress } from '@/lib/translation';
 
+interface TranslationInfo {
+  sourceLanguage: string;
+  targetLanguage: string;
+}
+
 // Inner component that uses the language context
 function TranslationPageInner() {
   const { language } = useLanguage();
   // State
   const [currentSpecialization, setCurrentSpecialization] = useState<Specialization>(defaultSpecialization);
   const [documentState, setDocumentState] = useState<DocumentState>(initialDocumentState);
-  const [summary, setSummary] = useState<DocumentSummary>({ wordCount: 0, sections: [] });
+  const [summary, setSummary] = useState<DocumentSummary>({ wordCount: 0, pageCount: 1, sections: [] });
   const [isDownloading, setIsDownloading] = useState(false);
   const [widgetReady, setWidgetReady] = useState(false);
 
@@ -35,6 +40,14 @@ function TranslationPageInner() {
     progress: number;
     lastUpdated: Date;
   } | null>(null);
+
+  // New state for enhanced UI
+  const [detectedLanguage, setDetectedLanguage] = useState<string | null>(null);
+  const [translationInfo, setTranslationInfo] = useState<TranslationInfo | null>(null);
+  const [executiveSummary, setExecutiveSummary] = useState<string>('');
+  const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
+  const [translationComplete, setTranslationComplete] = useState(false);
+  const [documentProperties, setDocumentProperties] = useState<DocumentProperties | null>(null);
 
   // Refs
   const viewerRef = useRef<TranslationViewerRef>(null);
@@ -52,17 +65,37 @@ function TranslationPageInner() {
     title: string;
     sections: Array<{ title: string; content: string }>;
   } | null>(null);
+  const summaryContentHashRef = useRef<string>('');
+  const summaryDebounceRef = useRef<NodeJS.Timeout | null>(null);
 
   // Set up translation progress callback
   useEffect(() => {
+    console.log('[TranslationPage] Setting up progress callback');
     setTranslationProgressCallback((progress) => {
+      console.log(`[TranslationPage] Progress received: ${progress.percentage}% status=${progress.status}`);
       setTranslationProgress(progress);
+
+      // Capture detected language from progress
+      if (progress?.sourceLanguage && !detectedLanguage) {
+        setDetectedLanguage(progress.sourceLanguage);
+      }
+
+      // Track completion
+      if (progress?.status === 'completed') {
+        setTranslationComplete(true);
+        setTranslationInfo({
+          sourceLanguage: progress.sourceLanguage,
+          targetLanguage: progress.targetLanguage,
+        });
+        // Reset after showing success
+        setTimeout(() => setTranslationComplete(false), 5000);
+      }
     });
 
     return () => {
       setTranslationProgressCallback(null);
     };
-  }, []);
+  }, [detectedLanguage]);
 
   // Check for incomplete translation on mount
   useEffect(() => {
@@ -126,7 +159,7 @@ function TranslationPageInner() {
 
       window.OkidokiWidget.registerTools(tools);
       toolsRegisteredRef.current = true;
-      console.log('[Okidoki] Tools registered:', tools.map(t => t.name));
+      console.log('[Okidoki] Tools registered:', tools.map((t: { name: string }) => t.name));
       return true;
     };
 
@@ -161,6 +194,77 @@ function TranslationPageInner() {
     console.log('[Okidoki] Tools re-registered with updated state');
   }, [documentState.userHasEdited]);
 
+  // Generate executive summary when content changes
+  useEffect(() => {
+    if (summary.wordCount < 50) {
+      setExecutiveSummary('');
+      return;
+    }
+
+    // Simple hash of word count + section count for change detection
+    const contentHash = `${summary.wordCount}-${summary.sections.length}`;
+    
+    // Check if content changed significantly (>5% word count change)
+    const lastHash = summaryContentHashRef.current;
+    if (lastHash) {
+      const lastWordCount = parseInt(lastHash.split('-')[0]) || 0;
+      const changePercent = Math.abs(summary.wordCount - lastWordCount) / Math.max(lastWordCount, 1);
+      if (changePercent < 0.05 && executiveSummary) {
+        return; // Not enough change
+      }
+    }
+
+    // Debounce summary generation (20 seconds)
+    if (summaryDebounceRef.current) {
+      clearTimeout(summaryDebounceRef.current);
+    }
+
+    summaryDebounceRef.current = setTimeout(async () => {
+      if (!window.OkidokiWidget?.ask) return;
+      
+      setIsGeneratingSummary(true);
+      try {
+        const viewer = viewerRef.current;
+        if (!viewer) return;
+        
+        const content = viewer.getContent();
+        if (!content) return;
+
+        // Extract text for summary
+        const extractText = (node: { text?: string; content?: unknown[] }): string => {
+          if (node.text) return node.text;
+          if (node.content) {
+            return (node.content as { text?: string; content?: unknown[] }[])
+              .map(n => extractText(n))
+              .join(' ');
+          }
+          return '';
+        };
+        const text = extractText(content).substring(0, 3000);
+
+        const result = await window.OkidokiWidget.ask({
+          prompt: 'Summarize this document in 1-2 sentences. Include the document type, main subject, and purpose.',
+          context: text,
+        }) as { success: boolean; result?: string };
+
+        if (result?.success && result.result) {
+          setExecutiveSummary(result.result);
+          summaryContentHashRef.current = contentHash;
+        }
+      } catch (error) {
+        console.error('[Summary] Failed to generate:', error);
+      } finally {
+        setIsGeneratingSummary(false);
+      }
+    }, 20000); // 20 second debounce
+
+    return () => {
+      if (summaryDebounceRef.current) {
+        clearTimeout(summaryDebounceRef.current);
+      }
+    };
+  }, [summary.wordCount, summary.sections.length, executiveSummary]);
+
   // Handle specialization change
   const handleSpecializationChange = useCallback((spec: Specialization) => {
     setCurrentSpecialization(spec);
@@ -183,6 +287,16 @@ function TranslationPageInner() {
 
     setIsDownloading(true);
     try {
+      // Try to set author before exporting (don't block if it fails)
+      try {
+        await viewer.setProperties({
+          author: 'Okidoki Translator',
+          modified: new Date(),
+        });
+      } catch (propError) {
+        console.warn('[Download] Could not set properties:', propError);
+      }
+
       const blob = await viewer.exportDocx();
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -205,14 +319,8 @@ function TranslationPageInner() {
     setSummary(newSummary);
   }, []);
 
-  // Handle section click in summary panel
-  const handleSectionClick = useCallback(async (pos: number) => {
-    console.log('[SectionClick] Position:', pos);
-  }, []);
-
   // Translation cancel handler
   const handleCancelTranslation = useCallback(() => {
-    // Request cancellation from orchestrator and show dialog
     requestTranslationCancel();
     setShowCancelDialog(true);
   }, []);
@@ -229,17 +337,16 @@ function TranslationPageInner() {
         window.OkidokiWidget,
         {
           onProgress: setTranslationProgress,
-          onComplete: async (json) => {
-            await viewerRef.current?.setSource(json);
+          onComplete: async () => {
             setTranslationProgress(null);
           },
-          onError: (error) => {
+          onError: (error: string) => {
             console.error('[Resume] Error:', error);
             setTranslationProgress(null);
           },
         },
-        async (json) => {
-          await viewerRef.current?.setSource(json);
+        (json: unknown) => {
+          viewerRef.current?.updateContent(json);
         }
       );
     }
@@ -260,7 +367,6 @@ function TranslationPageInner() {
 
   // Keep translated content
   const handleKeepTranslated = useCallback(() => {
-    // Resolve the cancel choice - this unblocks the orchestrator
     resolveCancelChoice('keep');
     setShowCancelDialog(false);
     setTranslationProgress(null);
@@ -268,18 +374,19 @@ function TranslationPageInner() {
 
   // Restore original document
   const handleRestoreOriginal = useCallback(() => {
-    // Resolve the cancel choice - this unblocks the orchestrator
     resolveCancelChoice('restore');
     setShowCancelDialog(false);
     setTranslationProgress(null);
     
-    // Restore the original document using updateContent (preserves template)
     const orchestrator = getTranslationOrchestrator();
     const persistedState = orchestrator.checkForIncompleteTranslation();
     
     if (persistedState?.originalDocumentJson && viewerRef.current) {
       viewerRef.current.updateContent(persistedState.originalDocumentJson);
     }
+    
+    // Clear translation info on revert
+    setTranslationInfo(null);
   }, []);
 
   // Handle loading a DOCX file
@@ -290,11 +397,91 @@ function TranslationPageInner() {
     try {
       await viewer.setSource(file);
       setDocumentState({ createdByAI: false, userHasEdited: false });
+      // Reset translation state on new file
+      setTranslationInfo(null);
+      setDetectedLanguage(null);
+      setExecutiveSummary('');
+      setDocumentProperties(null);
+      
+      // Fetch document properties
+      const props = await viewer.getProperties();
+      if (props) {
+        setDocumentProperties(props);
+        console.log('[Load] Document properties:', props);
+      }
+      
       console.log('[Load] DOCX loaded:', file.name);
     } catch (error) {
       console.error('[Load] Failed to load DOCX:', error);
     }
   }, []);
+
+  // Handle translate action from header dropdown
+  const handleTranslate = useCallback(async (targetLanguage: string) => {
+    const widget = window.OkidokiWidget;
+    if (!widget) {
+      console.warn('[Translate] Widget not available');
+      return;
+    }
+    
+    // Use invokeTool to call translate_document directly (without going through chat)
+    if (widget.invokeTool) {
+      try {
+        const result = await widget.invokeTool('translate_document', { target_language: targetLanguage });
+        console.log('[Translate] invokeTool result:', result);
+      } catch (error) {
+        console.error('[Translate] invokeTool error:', error);
+        // Fallback to chat message if direct invocation fails
+        widget.insertMessage?.(`Please translate the document to ${targetLanguage}`, { send: true });
+      }
+    } else {
+      // Fallback for older widget versions
+      widget.insertMessage?.(`Please translate the document to ${targetLanguage}`, { send: true });
+    }
+  }, []);
+
+  // Handle quick actions from TipBar
+  const handleQuickAction = useCallback((action: string) => {
+    const widget = window.OkidokiWidget;
+    if (!widget?.insertMessage) return;
+
+    const messages: Record<string, string> = {
+      contract: 'Write a formal contract document between two parties using placeholders for names, dates, and terms',
+      report: 'Create a professional business report in the document editor with executive summary, key findings, analysis, and recommendations sections',
+      help: 'What can you help me with in this document editor?',
+    };
+
+    const message = messages[action];
+    if (message) {
+      widget.insertMessage(message, { send: true });
+    }
+  }, []);
+
+
+  // Handle refresh summary
+  const handleRefreshSummary = useCallback(() => {
+    summaryContentHashRef.current = ''; // Clear hash to force regeneration
+    setExecutiveSummary('');
+  }, []);
+
+  // Handle update document properties
+  const handleUpdateProperties = useCallback(async (props: Partial<DocumentProperties>) => {
+    const viewer = viewerRef.current;
+    if (!viewer) return;
+
+    try {
+      await viewer.setProperties(props);
+      // Update local state
+      setDocumentProperties(prev => prev ? { ...prev, ...props } : props);
+      console.log('[Properties] Updated:', props);
+    } catch (error) {
+      console.error('[Properties] Failed to update:', error);
+    }
+  }, []);
+
+  // Determine if we have content
+  const hasContent = summary.wordCount > 0;
+  const isTranslating = translationProgress?.status === 'translating' || translationProgress?.status === 'preparing';
 
   return (
     <div className="h-screen flex flex-col bg-slate-50">
@@ -306,10 +493,14 @@ function TranslationPageInner() {
         onDownload={handleDownload}
         isDownloading={isDownloading}
         onLoadFile={handleLoadFile}
+        hasContent={hasContent}
+        isTranslating={isTranslating}
+        translationInfo={translationInfo}
+        onTranslate={handleTranslate}
       />
 
       {/* Main Content */}
-      <div className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-[1fr_280px] overflow-hidden">
+      <div className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-[1fr_300px] overflow-hidden">
         {/* Editor Section */}
         <main className="min-h-0 p-3 lg:p-4 overflow-hidden relative">
           <TranslationViewer
@@ -318,27 +509,33 @@ function TranslationPageInner() {
             onDocumentStateChange={setDocumentState}
             documentState={documentState}
           />
-          
-          {/* Translation Overlay */}
-          <TranslationOverlay
-            progress={translationProgress}
-            onCancel={handleCancelTranslation}
-          />
         </main>
 
         {/* Summary Panel */}
-        <aside className="hidden md:block border-l border-slate-200 bg-white overflow-auto">
-          <div className="p-3 lg:p-4">
+        <aside className="hidden md:block border-l border-slate-200 bg-slate-50 overflow-auto">
+          <div className="p-4">
             <SummaryPanel
-              summary={summary}
-              onSectionClick={handleSectionClick}
+              wordCount={summary.wordCount}
+              pageCount={summary.pageCount}
+              detectedLanguage={detectedLanguage || undefined}
+              translationInfo={translationInfo}
+              executiveSummary={executiveSummary}
+              isGeneratingSummary={isGeneratingSummary}
+              onRefreshSummary={handleRefreshSummary}
+              documentProperties={documentProperties}
+              onUpdateProperties={handleUpdateProperties}
             />
           </div>
         </aside>
       </div>
 
       {/* Tip Bar */}
-      <TipBar />
+      <TipBar 
+        hasContent={hasContent}
+        isTranslating={isTranslating}
+        translationComplete={translationComplete}
+        onQuickAction={handleQuickAction}
+      />
 
       {/* Resume Dialog */}
       {showResumeDialog && incompleteSummary && (
@@ -363,6 +560,12 @@ function TranslationPageInner() {
           onRestore={handleRestoreOriginal}
         />
       )}
+
+      {/* Translation Overlay - covers full page */}
+      <TranslationOverlay
+        progress={translationProgress}
+        onCancel={handleCancelTranslation}
+      />
     </div>
   );
 }
