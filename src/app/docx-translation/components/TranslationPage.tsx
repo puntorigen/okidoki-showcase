@@ -22,7 +22,7 @@ interface TranslationInfo {
 
 // Inner component that uses the language context
 function TranslationPageInner() {
-  const { language } = useLanguage();
+  const { language, t } = useLanguage();
   // State
   const [currentSpecialization, setCurrentSpecialization] = useState<Specialization>(defaultSpecialization);
   const [documentState, setDocumentState] = useState<DocumentState>(initialDocumentState);
@@ -446,16 +446,16 @@ function TranslationPageInner() {
     if (!widget?.insertMessage) return;
 
     const messages: Record<string, string> = {
-      contract: 'Write a formal contract document between two parties using placeholders for names, dates, and terms',
-      report: 'Create a professional business report in the document editor with executive summary, key findings, analysis, and recommendations sections',
-      help: 'What can you help me with in this document editor?',
+      contract: t('contractPrompt'),
+      report: t('reportPrompt'),
+      help: t('helpPrompt'),
     };
 
     const message = messages[action];
     if (message) {
       widget.insertMessage(message, { send: true });
     }
-  }, []);
+  }, [t]);
 
 
   // Handle refresh summary

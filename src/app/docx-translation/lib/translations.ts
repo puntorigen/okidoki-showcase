@@ -54,6 +54,10 @@ interface Translations {
   overlayHint: string;
   part: string;
   of: string;
+  // Quick action prompts (sent to AI)
+  contractPrompt: string;
+  reportPrompt: string;
+  helpPrompt: string;
   // Document properties
   editProperties: string;
   documentProperties: string;
@@ -133,6 +137,10 @@ export const translations: Record<Language, Translations> = {
     createContract: 'Create a contract',
     writeReport: 'Write a report',
     askForHelp: 'Help',
+    // Quick action prompts (sent to AI)
+    contractPrompt: 'Write a formal contract document between two parties using placeholders for names, dates, and terms',
+    reportPrompt: 'Create a professional business report in the document editor with executive summary, key findings, analysis, and recommendations sections',
+    helpPrompt: 'What can you help me with in this document editor?',
     // Translation overlay
     translatingDocument: 'Translating document',
     analyzingDocument: 'Analyzing document',
@@ -218,6 +226,10 @@ export const translations: Record<Language, Translations> = {
     createContract: 'Crear un contrato',
     writeReport: 'Escribir un informe',
     askForHelp: 'Ayuda',
+    // Quick action prompts (sent to AI)
+    contractPrompt: 'Escribe un contrato formal entre dos partes usando placeholders para nombres, fechas y términos',
+    reportPrompt: 'Crea un informe empresarial profesional en el editor de documentos con resumen ejecutivo, hallazgos clave, análisis y secciones de recomendaciones',
+    helpPrompt: '¿En qué puedes ayudarme con este editor de documentos?',
     // Translation overlay
     translatingDocument: 'Traduciendo documento',
     analyzingDocument: 'Analizando documento',
