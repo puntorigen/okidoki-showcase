@@ -42,6 +42,7 @@ export interface TranslationViewerRef {
   exportDocx: () => Promise<Blob>;
   resetComparison: () => void;
   acceptAllChanges: () => void;
+  parseHtml: (html: string) => Promise<any>;
   isReady: () => boolean;
 }
 
@@ -112,6 +113,12 @@ const TranslationViewer = forwardRef<TranslationViewerRef, TranslationViewerProp
             console.warn('[TranslationViewer] acceptAllChanges not available:', e);
           }
         }
+      },
+      parseHtml: async (html: string) => {
+        if (editorRef.current?.parseHtml) {
+          return await editorRef.current.parseHtml(html);
+        }
+        return null;
       },
       isReady: () => {
         return editorRef.current !== null && !isLoading;

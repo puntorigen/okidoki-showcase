@@ -10,6 +10,60 @@ import {
   TranslationOrchestrator,
   TranslationProgress,
 } from '@/lib/translation';
+import { marked } from 'marked';
+
+/**
+ * Extract text nodes with their marks from a parsed ProseMirror JSON structure.
+ * Recursively traverses the document to find all text nodes.
+ * Marks are taken directly from text nodes (parseHtml now correctly adds them).
+ */
+function extractTextNodesFromParsed(node: any): Array<{ text: string; marks: any[] }> {
+  const textNodes: Array<{ text: string; marks: any[] }> = [];
+  
+  const traverse = (n: any) => {
+    if (!n) return;
+    
+    // Found a text node - get its marks directly
+    if (n.type === 'text' && n.text) {
+      textNodes.push({
+        text: n.text,
+        marks: n.marks || [],
+      });
+      return;
+    }
+    
+    // Traverse children
+    if (n.content && Array.isArray(n.content)) {
+      for (const child of n.content) {
+        traverse(child);
+      }
+    }
+  };
+  
+  traverse(node);
+  return textNodes;
+}
+
+/**
+ * Merge marks from new content with original marks.
+ * New marks override existing marks of the same type.
+ */
+function mergeMarks(originalMarks: any[], newMarks: any[]): any[] {
+  const merged = [...originalMarks];
+  
+  for (const newMark of newMarks) {
+    const existingIndex = merged.findIndex(m => m.type === newMark.type);
+    if (existingIndex >= 0) {
+      // Override existing mark of same type
+      merged[existingIndex] = newMark;
+    } else {
+      // Add new mark type
+      merged.push(newMark);
+    }
+  }
+  
+  return merged;
+}
 
 // Cancel dialog resolver - used to connect UI dialog with orchestrator callback
 let cancelChoiceResolver: ((choice: 'keep' | 'restore') => void) | null = null;
@@ -444,11 +498,11 @@ Output ONLY HTML content. Use <h1> for title, <h2> for sections, <p> for paragra
       },
     },
 
-    // 4. UPDATE DOCUMENT - Surgical updates using segment mapping
+    // 4. UPDATE DOCUMENT - Surgical updates with support for new content (tables, etc.)
     {
       name: 'update_document',
       description:
-        'Make any change to the existing document. Use for: replacing placeholders, updating text, fixing typos, modifying sections, etc.',
+        'Make any change to the existing document. Use for: replacing text, fixing typos, modifying sections, adding tables, inserting new content, etc.',
       input: {
         request: {
           type: 'string',
@@ -477,7 +531,9 @@ Output ONLY HTML content. Use <h1> for title, <h2> for sections, <p> for paragra
             return { success: false, error: 'Document is empty' };
           }
 
-          // Extract segments with position info
+          // Build a structured view of the document for the LLM
+          // Format: [node_index] node_type: content_preview
+          const nodeDescriptions: string[] = [];
           const segments: Array<{
             id: string;
             nodeIndex: number;
@@ -486,41 +542,52 @@ Output ONLY HTML content. Use <h1> for title, <h2> for sections, <p> for paragra
             marks: any[];
           }> = [];
 
-          const extractSegments = (nodes: any[], nodeIndex: number) => {
-            let segmentIndex = 0;
-            const extract = (content: any[]) => {
-              for (const child of content) {
-                if (child.type === 'text' && child.text) {
-                  segments.push({
-                    id: `n${nodeIndex}_s${segmentIndex}`,
-                    nodeIndex,
-                    segmentIndex: segmentIndex++,
-                    text: child.text,
-                    marks: child.marks || [],
-                  });
-                } else if (child.content) {
-                  extract(child.content);
-                }
-              }
-            };
-            extract(nodes);
+          const extractText = (node: any): string => {
+            if (!node) return '';
+            if (node.text) return node.text;
+            if (node.content) {
+              return node.content.map((child: any) => extractText(child)).join('');
+            }
+            return '';
+          };
+
+          const getNodeType = (node: any): string => {
+            if (node.type === 'heading') return `heading${node.attrs?.level || 1}`;
+            if (node.type === 'table') return 'table';
+            if (node.type === 'bulletList') return 'bullet_list';
+            if (node.type === 'orderedList') return 'ordered_list';
+            return node.type || 'unknown';
           };
 
           // Process all content nodes
           for (let i = 0; i < json.content.length; i++) {
             const node = json.content[i];
+            const nodeType = getNodeType(node);
+            const text = extractText(node);
+            const preview = text.length > 80 ? text.slice(0, 80) + '...' : text;
+            nodeDescriptions.push(`[${i}] ${nodeType}: "${preview}"`);
+
+            // Extract segments for text replacement
             if (node.content) {
-              extractSegments(node.content, i);
+              let segmentIndex = 0;
+              const extractSegments = (content: any[]) => {
+                for (const child of content) {
+                  if (child.type === 'text' && child.text) {
+                    segments.push({
+                      id: `n${i}_s${segmentIndex}`,
+                      nodeIndex: i,
+                      segmentIndex: segmentIndex++,
+                      text: child.text,
+                      marks: child.marks || [],
+                    });
+                  } else if (child.content) {
+                    extractSegments(child.content);
+                  }
+                }
+              };
+              extractSegments(node.content);
             }
           }
-
-          if (segments.length === 0) {
-            widget.setToolNotification?.(null);
-            return { success: false, error: 'Document has no text content' };
-          }
-
-          // Build segment list for LLM
-          const segmentList = segments.map(s => `[${s.id}] "${s.text}"`).join('\n');
 
           const today = new Date().toLocaleDateString(isSpanish ? 'es-ES' : 'en-US', {
             year: 'numeric',
@@ -528,75 +595,189 @@ Output ONLY HTML content. Use <h1> for title, <h2> for sections, <p> for paragra
             day: 'numeric',
           });
 
-          // Ask LLM for only the changes needed
+          // Build segment list for text replacements
+          const segmentList = segments.map(s => `[${s.id}] "${s.text}"`).join('\n');
+
+          // Ask LLM for changes and insertions
           const result = await widget.ask({
-            prompt: `You are given a document as a list of text segments. The user wants to make a change.
+            prompt: `You are editing a document. The user wants to make changes.
 
-CRITICAL: Return ONLY the segments that need to change. Do NOT return unchanged segments.
+DOCUMENT STRUCTURE (node index, type, preview):
+${nodeDescriptions.join('\n')}
 
-For each segment that needs modification, return its ID and the new text.`,
+TEXT SEGMENTS (for text replacements):
+${segmentList}
+
+You can make two types of changes:
+
+1. TEXT REPLACEMENTS - Modify existing text segments
+   Use the segment ID (e.g., n0_s0) and provide the new text.
+   Only return segments that actually need to change.
+   You can include HTML formatting for styles:
+   - Bold: <strong>text</strong>
+   - Italic: <em>text</em>
+   - Color: <span style="color:red;">text</span> or <span style="color:#ff0000;">text</span>
+   - Underline: <u>text</u>
+   - Combine: <strong><span style="color:blue;">text</span></strong>
+   Plain text without HTML is also fine for simple text changes.
+
+2. CONTENT INSERTIONS - Add new content (tables, paragraphs, lists, etc.)
+   Specify where to insert (after which node index) and provide the content as Markdown.
+   Use standard Markdown syntax:
+   - Tables: | Header | Header |\\n|---|---|\\n| Cell | Cell |
+   - Paragraphs: Just text
+   - Lists: - item or 1. item
+   - Headings: ## Heading
+
+IMPORTANT:
+- For text replacements, wrap entire text in formatting tags (don't partially format)
+- For insertions, use Markdown syntax - it will be converted to document format
+- Return empty arrays if no changes of that type are needed`,
             context: `TODAY'S DATE: ${today}
 
-USER REQUEST: ${request}
-
-DOCUMENT SEGMENTS:
-${segmentList}`,
+USER REQUEST: ${request}`,
             output: widget.helpers ? {
-              changes: widget.helpers.array(
+              replacements: widget.helpers.array(
                 widget.helpers.object({
                   id: widget.helpers.string('Segment ID (e.g., n0_s0)'),
-                  newText: widget.helpers.string('The new text for this segment'),
+                  newText: widget.helpers.string('The new text, optionally with HTML formatting tags'),
+                })
+              ),
+              insertions: widget.helpers.array(
+                widget.helpers.object({
+                  afterNodeIndex: widget.helpers.number('Insert after this node index (-1 for start)'),
+                  markdown: widget.helpers.string('Content to insert as Markdown'),
                 })
               ),
             } : undefined,
           });
 
-          if (!result.success || !result.result?.changes) {
+          if (!result.success || !result.result) {
             widget.setToolNotification?.(null);
             return { success: false, error: 'Failed to determine changes' };
           }
 
-          const changes = result.result.changes as Array<{ id: string; newText: string }>;
+          const replacements = (result.result.replacements || []) as Array<{ id: string; newText: string }>;
+          const insertions = (result.result.insertions || []) as Array<{ afterNodeIndex: number; markdown: string }>;
           
-          if (changes.length === 0) {
+          if (replacements.length === 0 && insertions.length === 0) {
             widget.setToolNotification?.(null);
             return { success: true, message: 'No changes needed.' };
-          }
-
-          // Create a map of changes by segment ID
-          const changeMap = new Map<string, string>();
-          for (const change of changes) {
-            changeMap.set(change.id, change.newText);
           }
 
           // Apply changes to a deep clone of the document
           const updatedJson = JSON.parse(JSON.stringify(json));
           let changesApplied = 0;
 
-          const applyChanges = (content: any[], nodeIndex: number) => {
-            let segmentIndex = 0;
-            const apply = (nodes: any[]) => {
-              for (const node of nodes) {
-                if (node.type === 'text' && node.text) {
-                  const id = `n${nodeIndex}_s${segmentIndex}`;
-                  const newText = changeMap.get(id);
-                  if (newText !== undefined) {
-                    node.text = newText;
-                    changesApplied++;
+          // 1. Apply text replacements (with HTML formatting support)
+          if (replacements.length > 0) {
+            // Parse each replacement's HTML and extract text + marks
+            const parsedReplacements = new Map<string, { text: string; marks: any[] }>();
+            
+            for (const change of replacements) {
+              console.log('[Tool] update_document - Processing replacement:', change.id, 'newText:', change.newText);
+              
+              // Check if the newText contains HTML tags
+              const hasHtml = /<[^>]+>/.test(change.newText);
+              console.log('[Tool] update_document - Has HTML:', hasHtml);
+              
+              if (hasHtml) {
+                try {
+                  // Parse the HTML to extract text and marks
+                  console.log('[Tool] update_document - Calling parseHtml with:', change.newText);
+                  const parsed = await viewer.parseHtml(change.newText);
+                  console.log('[Tool] update_document - Parsed HTML result:', parsed);
+                  console.log('[Tool] update_document - Parsed HTML JSON:', JSON.stringify(parsed, null, 2));
+                  
+                  if (!parsed) {
+                    throw new Error('parseHtml returned null/undefined');
                   }
-                  segmentIndex++;
-                } else if (node.content) {
-                  apply(node.content);
+                  
+                  const textNodes = extractTextNodesFromParsed(parsed);
+                  console.log('[Tool] update_document - Extracted text nodes:', JSON.stringify(textNodes, null, 2));
+                  
+                  if (textNodes.length > 0) {
+                    // Concatenate all text nodes, collect all marks
+                    const combinedText = textNodes.map(t => t.text).join('');
+                    // Use marks from the first node (typically the wrapper)
+                    const marks = textNodes[0].marks;
+                    console.log('[Tool] update_document - Combined text:', combinedText, 'Marks:', JSON.stringify(marks));
+                    parsedReplacements.set(change.id, { text: combinedText, marks });
+                  } else {
+                    // Fallback: use as plain text
+                    console.log('[Tool] update_document - No text nodes found, using as plain text');
+                    parsedReplacements.set(change.id, { text: change.newText, marks: [] });
+                  }
+                } catch (err) {
+                  console.error('[Tool] update_document - Failed to parse HTML. Error:', err);
+                  console.error('[Tool] update_document - Error message:', err instanceof Error ? err.message : String(err));
+                  console.error('[Tool] update_document - Error stack:', err instanceof Error ? err.stack : 'no stack');
+                  parsedReplacements.set(change.id, { text: change.newText, marks: [] });
                 }
+              } else {
+                // Plain text, no marks to add
+                console.log('[Tool] update_document - Plain text, no HTML formatting');
+                parsedReplacements.set(change.id, { text: change.newText, marks: [] });
               }
-            };
-            apply(content);
-          };
+            }
 
-          for (let i = 0; i < updatedJson.content.length; i++) {
-            const node = updatedJson.content[i];
-            if (node.content) {
-              applyChanges(node.content, i);
+            const applyChanges = (content: any[], nodeIndex: number) => {
+              let segmentIndex = 0;
+              const apply = (nodes: any[]) => {
+                for (const node of nodes) {
+                  if (node.type === 'text' && node.text) {
+                    const id = `n${nodeIndex}_s${segmentIndex}`;
+                    const replacement = parsedReplacements.get(id);
+                    if (replacement) {
+                      console.log('[Tool] update_document - Applying replacement to', id);
+                      console.log('[Tool] update_document - Original text:', node.text, 'Original marks:', JSON.stringify(node.marks || []));
+                      node.text = replacement.text;
+                      // Merge new marks with existing marks
+                      const originalMarks = node.marks || [];
+                      node.marks = mergeMarks(originalMarks, replacement.marks);
+                      console.log('[Tool] update_document - New text:', node.text, 'Merged marks:', JSON.stringify(node.marks));
+                      changesApplied++;
+                    }
+                    segmentIndex++;
+                  } else if (node.content) {
+                    apply(node.content);
+                  }
+                }
+              };
+              apply(content);
+            };
+
+            for (let i = 0; i < updatedJson.content.length; i++) {
+              const node = updatedJson.content[i];
+              if (node.content) {
+                applyChanges(node.content, i);
+              }
+            }
+          }
+
+          // 2. Apply content insertions (process in reverse order to maintain indices)
+          if (insertions.length > 0) {
+            // Sort by afterNodeIndex descending so we insert from end to start
+            const sortedInsertions = [...insertions].sort((a, b) => b.afterNodeIndex - a.afterNodeIndex);
+
+            for (const insertion of sortedInsertions) {
+              try {
+                // Convert markdown to HTML
+                const html = await marked(insertion.markdown);
+                
+                // Convert HTML to ProseMirror JSON using the editor's parseHtml method (async)
+                const parsedContent = await viewer.parseHtml(html);
+                
+                if (parsedContent?.content && parsedContent.content.length > 0) {
+                  // Insert the new nodes at the specified position
+                  const insertAt = insertion.afterNodeIndex + 1;
+                  updatedJson.content.splice(insertAt, 0, ...parsedContent.content);
+                  changesApplied += parsedContent.content.length;
+                }
+              } catch (err) {
+                console.error('[Tool] update_document insertion error:', err);
+                // Continue with other insertions
+              }
             }
           }
 
@@ -604,10 +785,22 @@ ${segmentList}`,
           await viewer.compareWith(updatedJson);
 
           widget.setToolNotification?.(null);
+          
+          const replacementCount = replacements.length;
+          const insertionCount = insertions.length;
+          let message = `Applied ${changesApplied} change(s) with track changes`;
+          if (replacementCount > 0 && insertionCount > 0) {
+            message += ` (${replacementCount} replacement(s), ${insertionCount} insertion(s))`;
+          } else if (insertionCount > 0) {
+            message += ` (${insertionCount} insertion(s))`;
+          }
+          
           return {
             success: true,
-            message: `Applied ${changesApplied} change(s) with track changes.`,
+            message: message + '.',
             changes: changesApplied,
+            replacements: replacementCount,
+            insertions: insertionCount,
           };
         } catch (error) {
           console.error('[Tool] update_document error:', error);
