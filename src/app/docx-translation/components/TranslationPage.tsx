@@ -67,6 +67,7 @@ function TranslationPageInner() {
   } | null>(null);
   const summaryContentHashRef = useRef<string>('');
   const summaryDebounceRef = useRef<NodeJS.Timeout | null>(null);
+  const summaryLanguageRef = useRef<string>('');
 
   // Set up translation progress callback
   useEffect(() => {
@@ -204,9 +205,12 @@ function TranslationPageInner() {
     // Simple hash of word count + section count for change detection
     const contentHash = `${summary.wordCount}-${summary.sections.length}`;
     
+    // Check if language changed - if so, regenerate regardless of content changes
+    const languageChanged = summaryLanguageRef.current && summaryLanguageRef.current !== language;
+    
     // Check if content changed significantly (>5% word count change)
     const lastHash = summaryContentHashRef.current;
-    if (lastHash) {
+    if (lastHash && !languageChanged) {
       const lastWordCount = parseInt(lastHash.split('-')[0]) || 0;
       const changePercent = Math.abs(summary.wordCount - lastWordCount) / Math.max(lastWordCount, 1);
       if (changePercent < 0.05 && executiveSummary) {
@@ -242,14 +246,20 @@ function TranslationPageInner() {
         };
         const text = extractText(content).substring(0, 3000);
 
+        // Generate summary prompt in the correct UI language
+        const summaryPrompt = language === 'es'
+          ? 'Resume este documento en 1-2 oraciones. Incluye el tipo de documento, tema principal y propósito. Responde en español.'
+          : 'Summarize this document in 1-2 sentences. Include the document type, main subject, and purpose.';
+        
         const result = await window.OkidokiWidget.ask({
-          prompt: 'Summarize this document in 1-2 sentences. Include the document type, main subject, and purpose.',
+          prompt: summaryPrompt,
           context: text,
         }) as { success: boolean; result?: string };
 
         if (result?.success && result.result) {
           setExecutiveSummary(result.result);
           summaryContentHashRef.current = contentHash;
+          summaryLanguageRef.current = language;
         }
       } catch (error) {
         console.error('[Summary] Failed to generate:', error);
@@ -263,7 +273,7 @@ function TranslationPageInner() {
         clearTimeout(summaryDebounceRef.current);
       }
     };
-  }, [summary.wordCount, summary.sections.length, executiveSummary]);
+  }, [summary.wordCount, summary.sections.length, executiveSummary, language]);
 
   // Handle specialization change
   const handleSpecializationChange = useCallback((spec: Specialization) => {
