@@ -11,6 +11,7 @@ import {
   TranslationProgress,
 } from '@/lib/translation';
 import { marked } from 'marked';
+import type { EnrichedChange } from 'docx-diff-editor';
 
 /**
  * Extract runs from a parsed ProseMirror JSON structure.
@@ -125,6 +126,91 @@ let progressCallback: TranslationEventCallback | null = null;
 export function setTranslationProgressCallback(callback: TranslationEventCallback | null) {
   console.log('[TranslationTools] Setting progress callback:', callback ? 'function' : 'null');
   progressCallback = callback;
+}
+
+// Track applied changes within the current conversation turn to prevent infinite loops
+// When the AI adds content and then reads it back, we need to exclude recently-added content
+let appliedChangesInTurn: EnrichedChange[] = [];
+let lastTurnTimestamp = 0;
+const TURN_TIMEOUT_MS = 20000; // Consider a new turn after 20 seconds of inactivity
+
+/**
+ * Add new changes to the tracking array.
+ * Called after each successful compareWith operation.
+ */
+function trackAppliedChanges(changes: EnrichedChange[]) {
+  // Reset if too much time has passed (new conversation turn)
+  const now = Date.now();
+  if (now - lastTurnTimestamp > TURN_TIMEOUT_MS) {
+    appliedChangesInTurn = [];
+  }
+  lastTurnTimestamp = now;
+  
+  // Add the new changes
+  appliedChangesInTurn.push(...changes);
+  console.log('[TranslationTools] Tracking', changes.length, 'new changes. Total:', appliedChangesInTurn.length);
+}
+
+/**
+ * Reset the applied changes tracking (call at the start of a new user message/turn).
+ */
+export function resetAppliedChangesTracking() {
+  appliedChangesInTurn = [];
+  lastTurnTimestamp = Date.now();
+  console.log('[TranslationTools] Reset applied changes tracking');
+}
+
+/**
+ * Get a summary of changes already applied in this turn.
+ * Used to inform the LLM about what has already been done.
+ */
+function getAppliedChangesSummary(): string {
+  if (appliedChangesInTurn.length === 0) return '';
+  
+  const insertions = appliedChangesInTurn.filter(c => c.type === 'insertion');
+  const replacements = appliedChangesInTurn.filter(c => c.type === 'replacement');
+  const formatChanges = appliedChangesInTurn.filter(c => c.type === 'format');
+  const deletions = appliedChangesInTurn.filter(c => c.type === 'deletion');
+  
+  const summaryParts: string[] = [];
+  
+  if (insertions.length > 0) {
+    summaryParts.push(`- ${insertions.length} insertion(s): ${insertions.slice(0, 3).map(c => `"${(c.text || '').slice(0, 50)}${(c.text || '').length > 50 ? '...' : ''}"`).join(', ')}${insertions.length > 3 ? ` and ${insertions.length - 3} more` : ''}`);
+  }
+  if (replacements.length > 0) {
+    summaryParts.push(`- ${replacements.length} replacement(s): ${replacements.slice(0, 3).map(c => `"${(c.oldText || '').slice(0, 30)}" → "${(c.newText || '').slice(0, 30)}"`).join(', ')}${replacements.length > 3 ? ` and ${replacements.length - 3} more` : ''}`);
+  }
+  if (formatChanges.length > 0) {
+    summaryParts.push(`- ${formatChanges.length} format change(s)`);
+  }
+  if (deletions.length > 0) {
+    summaryParts.push(`- ${deletions.length} deletion(s)`);
+  }
+  
+  return summaryParts.join('\n');
+}
+
+/**
+ * Get the texts of recently inserted content to exclude from segment list.
+ * This prevents the AI from re-processing content it just added.
+ */
+function getRecentlyInsertedTexts(): Set<string> {
+  const insertedTexts = new Set<string>();
+  
+  for (const change of appliedChangesInTurn) {
+    if (change.type === 'insertion' && change.text) {
+      // Add the full text
+      insertedTexts.add(change.text.trim());
+      // Also add normalized version (no extra spaces)
+      insertedTexts.add(change.text.replace(/\s+/g, ' ').trim());
+    }
+    if (change.type === 'replacement' && change.newText) {
+      insertedTexts.add(change.newText.trim());
+      insertedTexts.add(change.newText.replace(/\s+/g, ' ').trim());
+    }
+  }
+  
+  return insertedTexts;
 }
 
 export function getTranslationOrchestrator(): TranslationOrchestrator {
@@ -582,24 +668,58 @@ Output ONLY HTML content. Use <h1> for title, <h2> for sections, <p> for paragra
             day: 'numeric',
           });
 
-          // Build segment list for text replacements
-          const segmentList = segments.map(s => `[${s.id}] "${s.text}"`).join('\n');
+          // Get recently inserted texts to exclude from segment list
+          // This prevents infinite loops when AI-generated content is re-processed
+          const recentlyInsertedTexts = getRecentlyInsertedTexts();
+          
+          // Filter segments to exclude recently inserted content
+          const filteredSegments = segments.filter(s => {
+            const normalizedText = s.text.replace(/\s+/g, ' ').trim();
+            // Check if this segment text is part of recently inserted content
+            for (const insertedText of recentlyInsertedTexts) {
+              // Exact match
+              if (normalizedText === insertedText) {
+                console.log('[Tool] update_document - Excluding recently inserted segment:', s.id, s.text.slice(0, 50));
+                return false;
+              }
+              // Check if this segment is a substring of recently inserted content
+              if (insertedText.includes(normalizedText) && normalizedText.length > 20) {
+                console.log('[Tool] update_document - Excluding segment that is part of recent insertion:', s.id);
+                return false;
+              }
+            }
+            return true;
+          });
+          
+          // Get summary of changes already applied in this turn
+          const appliedChangesSummary = getAppliedChangesSummary();
 
-          // Ask LLM for changes and insertions
+          // Build segment list for text replacements (using filtered segments)
+          const segmentList = filteredSegments.map(s => `[${s.id}] "${s.text}"`).join('\n');
+          
+          // Build the applied changes section if there are any (informational, not prohibitive)
+          const appliedChangesSection = appliedChangesSummary 
+            ? `\n\nCHANGES ALREADY APPLIED IN THIS SESSION:
+${appliedChangesSummary}
+Note: The above changes were just made. Only make additional changes if the user's request requires more work.`
+            : '';
+
+          // Ask LLM for changes, node replacements, and insertions
           const result = await widget.ask({
             prompt: `You are editing a document. The user wants to make changes.
 
 DOCUMENT STRUCTURE (node index, type, preview):
-${nodeDescriptions.join('\n')}
+${nodeDescriptions.join('\n')}${appliedChangesSection}
 
 TEXT SEGMENTS (for text replacements):
 ${segmentList}
 
-You can make two types of changes:
+You can make three types of changes:
 
-1. TEXT REPLACEMENTS - Modify existing text segments
+1. TEXT REPLACEMENTS - Edit text within existing document structures
    Use the segment ID (e.g., n0_s0) and provide the new text.
    Only return segments that actually need to change.
+   IMPORTANT: Do NOT use markdown syntax (no -, *, #, etc.) - the document structure already exists.
    You can include HTML formatting for styles:
    - Bold: <strong>text</strong>
    - Italic: <em>text</em>
@@ -608,17 +728,24 @@ You can make two types of changes:
    - Combine: <strong><span style="color:blue;">text</span></strong>
    Plain text without HTML is also fine for simple text changes.
 
-2. CONTENT INSERTIONS - Add new content (tables, paragraphs, lists, etc.)
-   Specify where to insert (after which node index) and provide the content as Markdown.
-   Use standard Markdown syntax:
-   - Tables: | Header | Header |\\n|---|---|\\n| Cell | Cell |
-   - Paragraphs: Just text
-   - Lists: - item or 1. item
-   - Headings: ## Heading
+2. NODE REPLACEMENTS - Replace an entire node with different structure
+   Use when you need to change the structure (e.g., convert paragraph to list, paragraph to table).
+   Specify the node index to replace and provide the new content as Markdown.
+   One node can become multiple nodes.
+
+3. CONTENT INSERTIONS - Add new content after a node
+   Specify where to insert (after which node index, -1 for start) and provide content as Markdown.
+   Use for adding new sections, tables, lists without replacing existing content.
+
+MARKDOWN SYNTAX (for node replacements and insertions only):
+- Tables: | Header | Header |\\n|---|---|\\n| Cell | Cell |
+- Paragraphs: Just text
+- Lists: - item or 1. item
+- Headings: ## Heading
 
 IMPORTANT:
-- For text replacements, wrap entire text in formatting tags (don't partially format)
-- For insertions, use Markdown syntax - it will be converted to document format
+- For TEXT REPLACEMENTS: Do NOT use markdown list syntax (- or *) - just provide the text content
+- For NODE REPLACEMENTS and INSERTIONS: Use full Markdown syntax
 - Return empty arrays if no changes of that type are needed`,
             context: `TODAY'S DATE: ${today}
 
@@ -627,7 +754,13 @@ USER REQUEST: ${request}`,
               replacements: widget.helpers.array(
                 widget.helpers.object({
                   id: widget.helpers.string('Segment ID (e.g., n0_s0)'),
-                  newText: widget.helpers.string('The new text, optionally with HTML formatting tags'),
+                  newText: widget.helpers.string('The new text - plain text or HTML formatting, NO markdown'),
+                })
+              ),
+              nodeReplacements: widget.helpers.array(
+                widget.helpers.object({
+                  nodeIndex: widget.helpers.number('The node index to replace'),
+                  markdown: widget.helpers.string('New content as Markdown (can produce multiple nodes)'),
                 })
               ),
               insertions: widget.helpers.array(
@@ -645,9 +778,10 @@ USER REQUEST: ${request}`,
           }
 
           const replacements = (result.result.replacements || []) as Array<{ id: string; newText: string }>;
+          const nodeReplacements = (result.result.nodeReplacements || []) as Array<{ nodeIndex: number; markdown: string }>;
           const insertions = (result.result.insertions || []) as Array<{ afterNodeIndex: number; markdown: string }>;
           
-          if (replacements.length === 0 && insertions.length === 0) {
+          if (replacements.length === 0 && nodeReplacements.length === 0 && insertions.length === 0) {
             widget.setToolNotification?.(null);
             return { success: true, message: 'No changes needed.' };
           }
@@ -664,26 +798,71 @@ USER REQUEST: ${request}`,
             // If the content has HTML, we store the full run structure from parseHtml
             // If plain text, we create a simple run with the text
             const parsedReplacements = new Map<string, { runs: any[]; isPlainText: boolean }>();
+            // Track processed text (after stripping list prefixes) for plain text replacements
+            const processedTextMap = new Map<string, string>();
             
             for (const change of replacements) {
               console.log('[Tool] update_document - Processing replacement:', change.id, 'newText:', change.newText);
               
+              // Strip markdown list prefixes from text replacements
+              // The LLM should NOT use markdown in replacements, but if it does, strip the prefix
+              // since the list structure already exists in the document
+              let processedText = change.newText;
+              const listPrefixMatch = processedText.match(/^[\-\*]\s+([\s\S]+)$/);
+              if (listPrefixMatch) {
+                console.log('[Tool] update_document - Stripping markdown list prefix from replacement');
+                processedText = listPrefixMatch[1];
+              }
+              // Also strip numbered list prefixes (e.g., "1. text")
+              const numberedListMatch = processedText.match(/^\d+\.\s+([\s\S]+)$/);
+              if (numberedListMatch) {
+                console.log('[Tool] update_document - Stripping numbered list prefix from replacement');
+                processedText = numberedListMatch[1];
+              }
+              
+              // Store the processed text for later use
+              processedTextMap.set(change.id, processedText);
+              
               // Check if the newText contains HTML tags
-              const hasHtml = /<[^>]+>/.test(change.newText);
-              // Check if the newText contains markdown formatting (bold, italic, etc.)
-              const hasMarkdown = /\*\*[^*]+\*\*|\*[^*]+\*|__[^_]+__|_[^_]+_/.test(change.newText);
+              const hasHtml = /<[^>]+>/.test(processedText);
+              // Check if the processedText contains markdown formatting:
+              // - Headings: lines starting with # (1-6 hashes)
+              // - Bold: **text** or __text__
+              // - Italic: *text* or _text_
+              // Note: We already stripped list prefixes above, so we don't check for them here
+              const hasMarkdown = /^#{1,6}\s+.+/m.test(processedText) || // headings
+                                  /\*\*[^*]+\*\*/.test(processedText) || // bold **
+                                  /__[^_]+__/.test(processedText) ||     // bold __
+                                  /(?<!\*)\*(?!\*)[^*]+\*(?!\*)/.test(processedText) || // italic *
+                                  /(?<!_)_(?!_)[^_]+_(?!_)/.test(processedText);        // italic _
               console.log('[Tool] update_document - Has HTML:', hasHtml, 'Has Markdown:', hasMarkdown);
               
               if (hasHtml || hasMarkdown) {
                 try {
                   // Convert markdown to HTML if needed, then parse
-                  let htmlContent = change.newText;
+                  let htmlContent = processedText;
                   if (hasMarkdown && !hasHtml) {
                     // Convert markdown to HTML using marked
                     console.log('[Tool] update_document - Converting markdown to HTML');
-                    htmlContent = await marked(change.newText);
-                    // marked wraps content in <p> tags, strip them for inline content
-                    htmlContent = htmlContent.replace(/^<p>/, '').replace(/<\/p>\s*$/, '').trim();
+                    const markedResult = await marked(processedText);
+                    
+                    // Null check for marked result
+                    if (!markedResult) {
+                      console.warn('[Tool] update_document - marked returned null/undefined, using original text');
+                      parsedReplacements.set(change.id, { runs: [], isPlainText: true });
+                      continue;
+                    }
+                    
+                    htmlContent = markedResult;
+                    // Since we're in the `hasMarkdown && !hasHtml` branch, the input was pure markdown
+                    // The marked library only generates plain <p> tags without attributes
+                    // So we can safely remove all <p> and </p> tags - they're all from marked
+                    // We replace </p> with space to preserve separation between paragraphs
+                    htmlContent = htmlContent
+                      .replace(/<p>/g, '')        // Remove all <p> tags (all are from marked, no attributes)
+                      .replace(/<\/p>/g, ' ')     // Replace </p> with space to separate paragraphs
+                      .replace(/\s+/g, ' ')       // Normalize whitespace
+                      .trim();
                     console.log('[Tool] update_document - Converted HTML:', htmlContent);
                   }
                   
@@ -724,12 +903,13 @@ USER REQUEST: ${request}`,
               }
             }
 
-            // Build a map of segment ID to original text for plain text replacements
+            // Build a map of segment ID to processed text for plain text replacements
             const originalTextMap = new Map<string, string>();
             for (const change of replacements) {
               const parsed = parsedReplacements.get(change.id);
               if (parsed?.isPlainText) {
-                originalTextMap.set(change.id, change.newText);
+                // Use the processed text (with list prefixes stripped)
+                originalTextMap.set(change.id, processedTextMap.get(change.id) || change.newText);
               }
             }
 
@@ -863,7 +1043,37 @@ USER REQUEST: ${request}`,
             }
           }
 
-          // 2. Apply content insertions (process in reverse order to maintain indices)
+          // 2. Apply node replacements (replace entire nodes with new structure)
+          // Process in reverse order to maintain indices
+          if (nodeReplacements.length > 0) {
+            // Sort by nodeIndex descending so we replace from end to start
+            const sortedNodeReplacements = [...nodeReplacements].sort((a, b) => b.nodeIndex - a.nodeIndex);
+
+            for (const replacement of sortedNodeReplacements) {
+              try {
+                console.log('[Tool] update_document - Node replacement at index', replacement.nodeIndex);
+                
+                // Convert markdown to HTML
+                const html = await marked(replacement.markdown);
+                
+                // Convert HTML to ProseMirror JSON using the editor's parseHtml method
+                const parsedContent = await viewer.parseHtml(html);
+                
+                if (parsedContent?.content && parsedContent.content.length > 0) {
+                  // Replace the node at the specified index with the new node(s)
+                  // One node can become multiple nodes
+                  updatedJson.content.splice(replacement.nodeIndex, 1, ...parsedContent.content);
+                  changesApplied += parsedContent.content.length;
+                  console.log('[Tool] update_document - Replaced node with', parsedContent.content.length, 'new node(s)');
+                }
+              } catch (err) {
+                console.error('[Tool] update_document node replacement error:', err);
+                // Continue with other replacements
+              }
+            }
+          }
+
+          // 3. Apply content insertions (process in reverse order to maintain indices)
           if (insertions.length > 0) {
             // Sort by afterNodeIndex descending so we insert from end to start
             const sortedInsertions = [...insertions].sort((a, b) => b.afterNodeIndex - a.afterNodeIndex);
@@ -892,16 +1102,30 @@ USER REQUEST: ${request}`,
           // Use compareWith to show track changes (including format changes)
           console.log('[Tool] update_document - Using compareWith');
           await viewer.compareWith(updatedJson);
+          
+          // Track the changes that were applied to prevent infinite loops
+          // This allows us to exclude recently-inserted content from future segment lists
+          const enrichedChanges = viewer.getEnrichedChangesContext();
+          if (enrichedChanges.length > 0) {
+            trackAppliedChanges(enrichedChanges);
+            console.log('[Tool] update_document - Tracked', enrichedChanges.length, 'enriched changes');
+          }
 
           widget.setToolNotification?.(null);
           
           const replacementCount = replacements.length;
+          const nodeReplacementCount = nodeReplacements.length;
           const insertionCount = insertions.length;
+          
+          // Build detailed message
+          const parts: string[] = [];
+          if (replacementCount > 0) parts.push(`${replacementCount} text replacement(s)`);
+          if (nodeReplacementCount > 0) parts.push(`${nodeReplacementCount} node replacement(s)`);
+          if (insertionCount > 0) parts.push(`${insertionCount} insertion(s)`);
+          
           let message = `Applied ${changesApplied} change(s) with track changes`;
-          if (replacementCount > 0 && insertionCount > 0) {
-            message += ` (${replacementCount} replacement(s), ${insertionCount} insertion(s))`;
-          } else if (insertionCount > 0) {
-            message += ` (${insertionCount} insertion(s))`;
+          if (parts.length > 0) {
+            message += ` (${parts.join(', ')})`;
           }
           
           return {
@@ -909,6 +1133,7 @@ USER REQUEST: ${request}`,
             message: message + '.',
             changes: changesApplied,
             replacements: replacementCount,
+            nodeReplacements: nodeReplacementCount,
             insertions: insertionCount,
           };
         } catch (error) {

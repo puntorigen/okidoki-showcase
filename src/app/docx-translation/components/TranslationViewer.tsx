@@ -6,7 +6,7 @@
  */
 
 import { useRef, useState, forwardRef, useImperativeHandle, useEffect, useCallback } from 'react';
-import { DocxDiffEditor, DocxDiffEditorRef, DocxContent } from 'docx-diff-editor';
+import { DocxDiffEditor, DocxDiffEditorRef, DocxContent, EnrichedChange } from 'docx-diff-editor';
 import 'docx-diff-editor/styles.css';
 import { useLanguage } from '../lib/LanguageContext';
 import { DocumentState, DocumentSummary } from '../types';
@@ -43,6 +43,7 @@ export interface TranslationViewerRef {
   resetComparison: () => void;
   acceptAllChanges: () => void;
   parseHtml: (html: string) => Promise<any>;
+  getEnrichedChangesContext: () => EnrichedChange[];
   isReady: () => boolean;
 }
 
@@ -119,6 +120,12 @@ const TranslationViewer = forwardRef<TranslationViewerRef, TranslationViewerProp
           return await editorRef.current.parseHtml(html);
         }
         return null;
+      },
+      getEnrichedChangesContext: () => {
+        if (editorRef.current?.getEnrichedChangesContext) {
+          return editorRef.current.getEnrichedChangesContext();
+        }
+        return [];
       },
       isReady: () => {
         return editorRef.current !== null && !isLoading;
