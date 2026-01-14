@@ -13,22 +13,19 @@ import {
 import { marked } from 'marked';
 
 /**
- * Extract text nodes with their marks from a parsed ProseMirror JSON structure.
- * Recursively traverses the document to find all text nodes.
- * Marks are taken directly from text nodes (parseHtml now correctly adds them).
+ * Extract runs from a parsed ProseMirror JSON structure.
+ * parseHtml returns the proper run structure with runProperties - we preserve this!
+ * Each run contains text nodes with their marks AND the run has runProperties for DOCX export.
  */
-function extractTextNodesFromParsed(node: any): Array<{ text: string; marks: any[] }> {
-  const textNodes: Array<{ text: string; marks: any[] }> = [];
+function extractRunsFromParsed(node: any): any[] {
+  const runs: any[] = [];
   
   const traverse = (n: any) => {
     if (!n) return;
     
-    // Found a text node - get its marks directly
-    if (n.type === 'text' && n.text) {
-      textNodes.push({
-        text: n.text,
-        marks: n.marks || [],
-      });
+    // Found a run - add it directly (preserves runProperties and text marks)
+    if (n.type === 'run') {
+      runs.push(n);
       return;
     }
     
@@ -41,28 +38,18 @@ function extractTextNodesFromParsed(node: any): Array<{ text: string; marks: any
   };
   
   traverse(node);
-  return textNodes;
+  return runs;
 }
 
 /**
- * Merge marks from new content with original marks.
- * New marks override existing marks of the same type.
+ * Get the combined text from a run's content (for logging/debugging)
  */
-function mergeMarks(originalMarks: any[], newMarks: any[]): any[] {
-  const merged = [...originalMarks];
-  
-  for (const newMark of newMarks) {
-    const existingIndex = merged.findIndex(m => m.type === newMark.type);
-    if (existingIndex >= 0) {
-      // Override existing mark of same type
-      merged[existingIndex] = newMark;
-    } else {
-      // Add new mark type
-      merged.push(newMark);
-    }
-  }
-  
-  return merged;
+function getRunText(run: any): string {
+  if (!run?.content) return '';
+  return run.content
+    .filter((n: any) => n.type === 'text')
+    .map((n: any) => n.text || '')
+    .join('');
 }
 
 // Cancel dialog resolver - used to connect UI dialog with orchestrator callback
@@ -670,81 +657,202 @@ USER REQUEST: ${request}`,
           let changesApplied = 0;
 
           // 1. Apply text replacements (with HTML formatting support)
+          // KEY INSIGHT: parseHtml returns runs with proper runProperties for DOCX export.
+          // We must preserve the run structure, not just extract text nodes!
           if (replacements.length > 0) {
-            // Parse each replacement's HTML and extract text + marks
-            const parsedReplacements = new Map<string, { text: string; marks: any[] }>();
+            // Store parsed runs for each replacement
+            // If the content has HTML, we store the full run structure from parseHtml
+            // If plain text, we create a simple run with the text
+            const parsedReplacements = new Map<string, { runs: any[]; isPlainText: boolean }>();
             
             for (const change of replacements) {
               console.log('[Tool] update_document - Processing replacement:', change.id, 'newText:', change.newText);
               
               // Check if the newText contains HTML tags
               const hasHtml = /<[^>]+>/.test(change.newText);
-              console.log('[Tool] update_document - Has HTML:', hasHtml);
+              // Check if the newText contains markdown formatting (bold, italic, etc.)
+              const hasMarkdown = /\*\*[^*]+\*\*|\*[^*]+\*|__[^_]+__|_[^_]+_/.test(change.newText);
+              console.log('[Tool] update_document - Has HTML:', hasHtml, 'Has Markdown:', hasMarkdown);
               
-              if (hasHtml) {
+              if (hasHtml || hasMarkdown) {
                 try {
-                  // Parse the HTML to extract text and marks
-                  console.log('[Tool] update_document - Calling parseHtml with:', change.newText);
-                  const parsed = await viewer.parseHtml(change.newText);
+                  // Convert markdown to HTML if needed, then parse
+                  let htmlContent = change.newText;
+                  if (hasMarkdown && !hasHtml) {
+                    // Convert markdown to HTML using marked
+                    console.log('[Tool] update_document - Converting markdown to HTML');
+                    htmlContent = await marked(change.newText);
+                    // marked wraps content in <p> tags, strip them for inline content
+                    htmlContent = htmlContent.replace(/^<p>/, '').replace(/<\/p>\s*$/, '').trim();
+                    console.log('[Tool] update_document - Converted HTML:', htmlContent);
+                  }
+                  
+                  // Parse the HTML - this returns the full structure with runs and runProperties
+                  console.log('[Tool] update_document - Calling parseHtml with:', htmlContent);
+                  const parsed = await viewer.parseHtml(htmlContent);
                   console.log('[Tool] update_document - Parsed HTML result:', parsed);
-                  console.log('[Tool] update_document - Parsed HTML JSON:', JSON.stringify(parsed, null, 2));
                   
                   if (!parsed) {
                     throw new Error('parseHtml returned null/undefined');
                   }
                   
-                  const textNodes = extractTextNodesFromParsed(parsed);
-                  console.log('[Tool] update_document - Extracted text nodes:', JSON.stringify(textNodes, null, 2));
+                  // Extract runs from the parsed structure - these have proper runProperties!
+                  const runs = extractRunsFromParsed(parsed);
+                  console.log('[Tool] update_document - Extracted', runs.length, 'runs');
+                  runs.forEach((run, i) => {
+                    console.log(`[Tool] update_document - Run ${i}: "${getRunText(run)}" runProperties:`, JSON.stringify(run.attrs?.runProperties || {}));
+                  });
                   
-                  if (textNodes.length > 0) {
-                    // Concatenate all text nodes, collect all marks
-                    const combinedText = textNodes.map(t => t.text).join('');
-                    // Use marks from the first node (typically the wrapper)
-                    const marks = textNodes[0].marks;
-                    console.log('[Tool] update_document - Combined text:', combinedText, 'Marks:', JSON.stringify(marks));
-                    parsedReplacements.set(change.id, { text: combinedText, marks });
+                  if (runs.length > 0) {
+                    parsedReplacements.set(change.id, { runs, isPlainText: false });
                   } else {
-                    // Fallback: use as plain text
-                    console.log('[Tool] update_document - No text nodes found, using as plain text');
-                    parsedReplacements.set(change.id, { text: change.newText, marks: [] });
+                    // Fallback: create a simple run with the text
+                    console.log('[Tool] update_document - No runs found, using as plain text');
+                    parsedReplacements.set(change.id, {
+                      runs: [],
+                      isPlainText: true,
+                    });
                   }
                 } catch (err) {
-                  console.error('[Tool] update_document - Failed to parse HTML. Error:', err);
-                  console.error('[Tool] update_document - Error message:', err instanceof Error ? err.message : String(err));
-                  console.error('[Tool] update_document - Error stack:', err instanceof Error ? err.stack : 'no stack');
-                  parsedReplacements.set(change.id, { text: change.newText, marks: [] });
+                  console.error('[Tool] update_document - Failed to parse HTML/Markdown. Error:', err);
+                  parsedReplacements.set(change.id, { runs: [], isPlainText: true });
                 }
               } else {
-                // Plain text, no marks to add
-                console.log('[Tool] update_document - Plain text, no HTML formatting');
-                parsedReplacements.set(change.id, { text: change.newText, marks: [] });
+                // Plain text, no formatting - will just update the text content
+                console.log('[Tool] update_document - Plain text, no HTML or Markdown formatting');
+                parsedReplacements.set(change.id, { runs: [], isPlainText: true });
               }
             }
 
-            const applyChanges = (content: any[], nodeIndex: number) => {
+            // Build a map of segment ID to original text for plain text replacements
+            const originalTextMap = new Map<string, string>();
+            for (const change of replacements) {
+              const parsed = parsedReplacements.get(change.id);
+              if (parsed?.isPlainText) {
+                originalTextMap.set(change.id, change.newText);
+              }
+            }
+
+            // Apply replacements at the RUN level (not text node level)
+            // This preserves the runProperties structure needed for DOCX export
+            const applyChanges = (paragraphContent: any[], nodeIndex: number) => {
               let segmentIndex = 0;
-              const apply = (nodes: any[]) => {
-                for (const node of nodes) {
-                  if (node.type === 'text' && node.text) {
-                    const id = `n${nodeIndex}_s${segmentIndex}`;
-                    const replacement = parsedReplacements.get(id);
-                    if (replacement) {
-                      console.log('[Tool] update_document - Applying replacement to', id);
-                      console.log('[Tool] update_document - Original text:', node.text, 'Original marks:', JSON.stringify(node.marks || []));
-                      node.text = replacement.text;
-                      // Merge new marks with existing marks
-                      const originalMarks = node.marks || [];
-                      node.marks = mergeMarks(originalMarks, replacement.marks);
-                      console.log('[Tool] update_document - New text:', node.text, 'Merged marks:', JSON.stringify(node.marks));
-                      changesApplied++;
+              
+              // Collect run positions with their segment IDs
+              // A run contains one or more text nodes - we track by the text content
+              const runPositions: Array<{
+                parentArray: any[];
+                runIndex: number;
+                textNodeIndex: number;
+                segmentId: string;
+                originalRun: any;
+              }> = [];
+              
+              // Traverse to find runs containing text
+              const collectRuns = (nodes: any[], parentArray: any[]) => {
+                for (let i = 0; i < nodes.length; i++) {
+                  const node = nodes[i];
+                  
+                  if (node.type === 'run' && node.content) {
+                    // Find text nodes in this run
+                    for (let j = 0; j < node.content.length; j++) {
+                      const child = node.content[j];
+                      if (child.type === 'text' && child.text) {
+                        runPositions.push({
+                          parentArray: parentArray,
+                          runIndex: i,
+                          textNodeIndex: j,
+                          segmentId: `n${nodeIndex}_s${segmentIndex}`,
+                          originalRun: node,
+                        });
+                        segmentIndex++;
+                      }
                     }
+                  } else if (node.type === 'text' && node.text) {
+                    // Text node directly in paragraph (not in a run)
+                    runPositions.push({
+                      parentArray: parentArray,
+                      runIndex: i,
+                      textNodeIndex: -1, // Indicates this is not inside a run
+                      segmentId: `n${nodeIndex}_s${segmentIndex}`,
+                      originalRun: null,
+                    });
                     segmentIndex++;
                   } else if (node.content) {
-                    apply(node.content);
+                    // Recurse into other container types
+                    collectRuns(node.content, node.content);
                   }
                 }
               };
-              apply(content);
+              
+              collectRuns(paragraphContent, paragraphContent);
+              
+              // Process runs that have been replaced - group by run to avoid double processing
+              const processedRunIndices = new Set<string>();
+              
+              // Apply replacements in reverse order to maintain valid indices
+              for (let p = runPositions.length - 1; p >= 0; p--) {
+                const pos = runPositions[p];
+                const replacement = parsedReplacements.get(pos.segmentId);
+                
+                if (!replacement) continue;
+                
+                // Create a unique key for this run position
+                const runKey = `${nodeIndex}_${pos.runIndex}`;
+                if (processedRunIndices.has(runKey)) continue;
+                processedRunIndices.add(runKey);
+                
+                console.log('[Tool] update_document - Applying replacement to', pos.segmentId);
+                
+                if (replacement.isPlainText) {
+                  // Plain text replacement - just update the text content
+                  const newText = originalTextMap.get(pos.segmentId) || '';
+                  
+                  if (pos.originalRun && pos.textNodeIndex >= 0) {
+                    // Update text inside the run
+                    console.log('[Tool] update_document - Plain text update in run:', newText.slice(0, 50) + '...');
+                    pos.originalRun.content[pos.textNodeIndex].text = newText;
+                  } else if (pos.textNodeIndex === -1) {
+                    // Direct text node in paragraph
+                    console.log('[Tool] update_document - Plain text update direct:', newText.slice(0, 50) + '...');
+                    pos.parentArray[pos.runIndex].text = newText;
+                  }
+                  changesApplied++;
+                } else {
+                  // HTML replacement - replace the entire run with the new runs from parseHtml
+                  const newRuns = replacement.runs;
+                  
+                  if (newRuns.length > 0) {
+                    console.log('[Tool] update_document - Replacing run with', newRuns.length, 'new runs');
+                    
+                    // Deep clone the new runs to avoid mutation issues
+                    const clonedRuns = JSON.parse(JSON.stringify(newRuns));
+                    
+                    // If the original run had additional properties we want to preserve
+                    // (like rsidR, rsidRPr), we can merge them here
+                    if (pos.originalRun?.attrs) {
+                      for (const run of clonedRuns) {
+                        if (run.attrs) {
+                          // Preserve original rsid values if not set
+                          if (pos.originalRun.attrs.rsidR && !run.attrs.rsidR) {
+                            run.attrs.rsidR = pos.originalRun.attrs.rsidR;
+                          }
+                          if (pos.originalRun.attrs.rsidRPr && !run.attrs.rsidRPr) {
+                            run.attrs.rsidRPr = pos.originalRun.attrs.rsidRPr;
+                          }
+                        }
+                      }
+                    }
+                    
+                    // Replace the original run with the new runs
+                    pos.parentArray.splice(pos.runIndex, 1, ...clonedRuns);
+                    changesApplied++;
+                    
+                    console.log('[Tool] update_document - Runs after replacement:', 
+                      clonedRuns.map((r: any) => `"${getRunText(r)}" (bold: ${r.attrs?.runProperties?.bold || false})`).join(', '));
+                  }
+                }
+              }
             };
 
             for (let i = 0; i < updatedJson.content.length; i++) {
@@ -781,7 +889,8 @@ USER REQUEST: ${request}`,
             }
           }
 
-          // Use compareWith to show track changes
+          // Use compareWith to show track changes (including format changes)
+          console.log('[Tool] update_document - Using compareWith');
           await viewer.compareWith(updatedJson);
 
           widget.setToolNotification?.(null);
