@@ -218,9 +218,17 @@ function TranslationPageInner() {
       }
     }
 
-    // Debounce summary generation (20 seconds)
+    // Debounce summary generation
+    // Use shorter debounce (500ms) when language changes, longer (20s) for content changes
+    const debounceTime = languageChanged ? 500 : 20000;
+    
     if (summaryDebounceRef.current) {
       clearTimeout(summaryDebounceRef.current);
+    }
+
+    // Show generating state immediately when language changes for better UX
+    if (languageChanged) {
+      setIsGeneratingSummary(true);
     }
 
     summaryDebounceRef.current = setTimeout(async () => {
