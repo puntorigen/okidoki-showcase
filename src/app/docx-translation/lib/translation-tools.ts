@@ -108,11 +108,6 @@ interface ToolContext {
   viewerRef: React.MutableRefObject<TranslationViewerRef | null>;
   documentState: DocumentState;
   setDocumentState: React.Dispatch<React.SetStateAction<DocumentState>>;
-  documentCreationStateRef?: React.MutableRefObject<{
-    inProgress: boolean;
-    completedSuccessfully: boolean;
-    lastCreatedTitle?: string;
-  }>;
   virtualDocumentRef?: React.MutableRefObject<VirtualDocument | null>;
 }
 
@@ -232,6 +227,8 @@ export function createTranslationTools(context: ToolContext) {
     // 1. CREATE DOCUMENT (same as superdoc-example)
     {
       name: 'create_document',
+      lockGroup: 'doc_mutation',
+      parallel: false,
       description:
         'Create a new document from scratch. Provide a detailed description of what to create. Include ALL relevant details from the conversation: parties involved, specific terms, dates, amounts, requirements, section names, etc.',
       input: {
@@ -260,26 +257,7 @@ export function createTranslationTools(context: ToolContext) {
         description: string;
         complexity: 'simple' | 'standard' | 'complex';
       }) => {
-        const creationState = context.documentCreationStateRef?.current || {
-          inProgress: false,
-          completedSuccessfully: false,
-          lastCreatedTitle: undefined,
-        };
-
-        if (creationState.inProgress) {
-          return {
-            success: false,
-            error: 'ALREADY_IN_PROGRESS: Document creation is still running.',
-          };
-        }
-
-        if (creationState.completedSuccessfully) {
-          return {
-            success: true,
-            message: `ALREADY_COMPLETED: Document "${creationState.lastCreatedTitle}" was already created.`,
-          };
-        }
-
+        // Note: Duplicate call prevention is handled by Okidoki widget's groupId lock
         const viewer = getViewer();
         if (!viewer) return { success: false, error: 'Editor not ready' };
 
@@ -290,14 +268,6 @@ export function createTranslationTools(context: ToolContext) {
 
         const language = widget.getLanguage?.() || 'en';
         const isSpanish = language === 'es';
-
-        if (context.documentCreationStateRef) {
-          context.documentCreationStateRef.current = {
-            inProgress: true,
-            completedSuccessfully: false,
-            lastCreatedTitle: undefined,
-          };
-        }
 
         const today = new Date().toLocaleDateString(isSpanish ? 'es-ES' : 'en-US', {
           year: 'numeric',
@@ -334,13 +304,6 @@ Output ONLY HTML content. Use <h1> for title, <h2> for sections, <p> for paragra
           });
 
           if (!result.success || !result.result) {
-            if (context.documentCreationStateRef) {
-              context.documentCreationStateRef.current = {
-                inProgress: false,
-                completedSuccessfully: false,
-                lastCreatedTitle: undefined,
-              };
-            }
             setNotification(null);
             return { success: false, error: result.error || 'Failed to generate content' };
           }
@@ -348,14 +311,6 @@ Output ONLY HTML content. Use <h1> for title, <h2> for sections, <p> for paragra
           const html = cleanHtml(result.result);
           await viewer.setSource(html);
           setDocumentState({ createdByAI: true, userHasEdited: false });
-
-          if (context.documentCreationStateRef) {
-            context.documentCreationStateRef.current = {
-              inProgress: false,
-              completedSuccessfully: true,
-              lastCreatedTitle: title,
-            };
-          }
 
           setNotification(null);
           return {
@@ -365,13 +320,6 @@ Output ONLY HTML content. Use <h1> for title, <h2> for sections, <p> for paragra
         } catch (error) {
           console.error('[Tool] create_document error:', error);
           setNotification(null);
-          if (context.documentCreationStateRef) {
-            context.documentCreationStateRef.current = {
-              inProgress: false,
-              completedSuccessfully: false,
-              lastCreatedTitle: undefined,
-            };
-          }
           return { success: false, error: String(error) };
         }
       },
@@ -574,6 +522,8 @@ Output ONLY HTML content. Use <h1> for title, <h2> for sections, <p> for paragra
     // 4. UPDATE DOCUMENT - Surgical updates with support for new content (tables, etc.)
     {
       name: 'update_document',
+      lockGroup: 'doc_mutation',
+      parallel: false,
       description:
         'Make any change to the existing document. Use for: replacing text, fixing typos, modifying sections, adding tables, inserting new content, etc.',
       input: {
@@ -668,28 +618,10 @@ Output ONLY HTML content. Use <h1> for title, <h2> for sections, <p> for paragra
             day: 'numeric',
           });
 
-          // Get recently inserted texts to exclude from segment list
-          // This prevents infinite loops when AI-generated content is re-processed
-          const recentlyInsertedTexts = getRecentlyInsertedTexts();
-          
-          // Filter segments to exclude recently inserted content
-          const filteredSegments = segments.filter(s => {
-            const normalizedText = s.text.replace(/\s+/g, ' ').trim();
-            // Check if this segment text is part of recently inserted content
-            for (const insertedText of recentlyInsertedTexts) {
-              // Exact match
-              if (normalizedText === insertedText) {
-                console.log('[Tool] update_document - Excluding recently inserted segment:', s.id, s.text.slice(0, 50));
-                return false;
-              }
-              // Check if this segment is a substring of recently inserted content
-              if (insertedText.includes(normalizedText) && normalizedText.length > 20) {
-                console.log('[Tool] update_document - Excluding segment that is part of recent insertion:', s.id);
-                return false;
-              }
-            }
-            return true;
-          });
+          // Note: We previously excluded recently inserted content from the segment list,
+          // but this prevented the AI from fixing its own mistakes (e.g., moving misplaced content).
+          // Now we show ALL segments to the AI, allowing it to modify any content including its own additions.
+          const filteredSegments = segments;
           
           // Get summary of changes already applied in this turn
           const appliedChangesSummary = getAppliedChangesSummary();
@@ -714,7 +646,7 @@ ${nodeDescriptions.join('\n')}${appliedChangesSection}
 TEXT SEGMENTS (for text replacements):
 ${segmentList}
 
-You can make three types of changes:
+You can make four types of changes:
 
 1. TEXT REPLACEMENTS - Edit text within existing document structures
    Use the segment ID (e.g., n0_s0) and provide the new text.
@@ -733,7 +665,12 @@ You can make three types of changes:
    Specify the node index to replace and provide the new content as Markdown.
    One node can become multiple nodes.
 
-3. CONTENT INSERTIONS - Add new content after a node
+3. NODE DELETIONS - Remove nodes from the document
+   Use ONLY to remove content that YOU previously added in an incorrect position, or that the user explicitly asks to delete.
+   NEVER delete original document content unless the user specifically requests it.
+   Specify the node indices to delete.
+
+4. CONTENT INSERTIONS - Add new content after a node
    Specify where to insert (after which node index, -1 for start) and provide content as Markdown.
    Use for adding new sections, tables, lists without replacing existing content.
 
@@ -763,6 +700,12 @@ USER REQUEST: ${request}`,
                   markdown: widget.helpers.string('New content as Markdown (can produce multiple nodes)'),
                 })
               ),
+              nodeDeletions: widget.helpers.array(
+                widget.helpers.object({
+                  nodeIndex: widget.helpers.number('The node index to delete'),
+                  reason: widget.helpers.string('Brief reason for deletion (e.g., "misplaced content", "user requested removal")'),
+                })
+              ),
               insertions: widget.helpers.array(
                 widget.helpers.object({
                   afterNodeIndex: widget.helpers.number('Insert after this node index (-1 for start)'),
@@ -779,9 +722,10 @@ USER REQUEST: ${request}`,
 
           const replacements = (result.result.replacements || []) as Array<{ id: string; newText: string }>;
           const nodeReplacements = (result.result.nodeReplacements || []) as Array<{ nodeIndex: number; markdown: string }>;
+          const nodeDeletions = (result.result.nodeDeletions || []) as Array<{ nodeIndex: number; reason: string }>;
           const insertions = (result.result.insertions || []) as Array<{ afterNodeIndex: number; markdown: string }>;
           
-          if (replacements.length === 0 && nodeReplacements.length === 0 && insertions.length === 0) {
+          if (replacements.length === 0 && nodeReplacements.length === 0 && nodeDeletions.length === 0 && insertions.length === 0) {
             widget.setToolNotification?.(null);
             return { success: true, message: 'No changes needed.' };
           }
@@ -1073,7 +1017,29 @@ USER REQUEST: ${request}`,
             }
           }
 
-          // 3. Apply content insertions (process in reverse order to maintain indices)
+          // 3. Apply node deletions (process in reverse order to maintain indices)
+          if (nodeDeletions.length > 0) {
+            // Sort by nodeIndex descending so we delete from end to start
+            const sortedDeletions = [...nodeDeletions].sort((a, b) => b.nodeIndex - a.nodeIndex);
+
+            for (const deletion of sortedDeletions) {
+              try {
+                const nodeIndex = deletion.nodeIndex;
+                if (nodeIndex >= 0 && nodeIndex < updatedJson.content.length) {
+                  console.log('[Tool] update_document - Deleting node at index', nodeIndex, 'reason:', deletion.reason);
+                  updatedJson.content.splice(nodeIndex, 1);
+                  changesApplied++;
+                } else {
+                  console.warn('[Tool] update_document - Invalid node index for deletion:', nodeIndex);
+                }
+              } catch (err) {
+                console.error('[Tool] update_document node deletion error:', err);
+                // Continue with other deletions
+              }
+            }
+          }
+
+          // 4. Apply content insertions (process in reverse order to maintain indices)
           if (insertions.length > 0) {
             // Sort by afterNodeIndex descending so we insert from end to start
             const sortedInsertions = [...insertions].sort((a, b) => b.afterNodeIndex - a.afterNodeIndex);
@@ -1115,12 +1081,14 @@ USER REQUEST: ${request}`,
           
           const replacementCount = replacements.length;
           const nodeReplacementCount = nodeReplacements.length;
+          const nodeDeletionCount = nodeDeletions.length;
           const insertionCount = insertions.length;
           
           // Build detailed message
           const parts: string[] = [];
           if (replacementCount > 0) parts.push(`${replacementCount} text replacement(s)`);
           if (nodeReplacementCount > 0) parts.push(`${nodeReplacementCount} node replacement(s)`);
+          if (nodeDeletionCount > 0) parts.push(`${nodeDeletionCount} deletion(s)`);
           if (insertionCount > 0) parts.push(`${insertionCount} insertion(s)`);
           
           let message = `Applied ${changesApplied} change(s) with track changes`;
@@ -1134,6 +1102,7 @@ USER REQUEST: ${request}`,
             changes: changesApplied,
             replacements: replacementCount,
             nodeReplacements: nodeReplacementCount,
+            nodeDeletions: nodeDeletionCount,
             insertions: insertionCount,
           };
         } catch (error) {

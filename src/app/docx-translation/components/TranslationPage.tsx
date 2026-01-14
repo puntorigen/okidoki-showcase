@@ -52,15 +52,6 @@ function TranslationPageInner() {
   // Refs
   const viewerRef = useRef<TranslationViewerRef>(null);
   const toolsRegisteredRef = useRef(false);
-  const documentCreationStateRef = useRef<{
-    inProgress: boolean;
-    completedSuccessfully: boolean;
-    lastCreatedTitle?: string;
-  }>({
-    inProgress: false,
-    completedSuccessfully: false,
-    lastCreatedTitle: undefined,
-  });
   const virtualDocumentRef = useRef<{
     title: string;
     sections: Array<{ title: string; content: string }>;
@@ -154,7 +145,6 @@ function TranslationPageInner() {
         viewerRef,
         documentState,
         setDocumentState,
-        documentCreationStateRef,
         virtualDocumentRef,
       });
 
@@ -186,7 +176,6 @@ function TranslationPageInner() {
       viewerRef,
       documentState,
       setDocumentState,
-      documentCreationStateRef,
       virtualDocumentRef,
     });
 
