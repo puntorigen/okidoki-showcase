@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { ArrowRight, Sparkles, Languages } from 'lucide-react';
+import { ArrowRight, Sparkles, Languages, Brush } from 'lucide-react';
 
 export default function Home() {
   return (
@@ -29,8 +29,9 @@ export default function Home() {
           </p>
         </div>
 
-        {/* Featured Example */}
-        <div className="max-w-xl mx-auto">
+        {/* Examples Grid */}
+        <div className="grid md:grid-cols-2 gap-6 max-w-4xl mx-auto">
+          {/* SuperDoc Editor */}
           <Link 
             href="/docx-translation"
             className="group relative bg-white rounded-2xl border border-slate-200 p-8 hover:border-indigo-300 hover:shadow-xl hover:shadow-indigo-100/50 transition-all duration-300 block"
@@ -44,8 +45,8 @@ export default function Home() {
                 SuperDoc Editor
               </h3>
               <p className="text-slate-600 mb-6 leading-relaxed">
-                Advanced AI-powered DOCX editor with translation capabilities. Generate, edit, and transform 
-                documents using natural language. Translate to any language while preserving formatting and consistent terminology.
+                Advanced AI-powered DOCX editor with translation capabilities. 
+                Generate, edit, and transform documents using natural language.
               </p>
               <div className="flex flex-wrap gap-2 mb-6">
                 <span className="px-3 py-1 bg-indigo-50 text-indigo-700 text-xs font-medium rounded-full">
@@ -55,13 +56,45 @@ export default function Home() {
                   Smart Translation
                 </span>
                 <span className="px-3 py-1 bg-slate-100 text-slate-600 text-xs font-medium rounded-full">
-                  Natural Language Editing
-                </span>
-                <span className="px-3 py-1 bg-slate-100 text-slate-600 text-xs font-medium rounded-full">
                   Format Preservation
                 </span>
               </div>
               <div className="flex items-center text-indigo-600 font-semibold group-hover:gap-3 gap-2 transition-all">
+                <span>Try it out</span>
+                <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+              </div>
+            </div>
+          </Link>
+
+          {/* Sketch Canvas AI */}
+          <Link 
+            href="/sketch-canvas"
+            className="group relative bg-white rounded-2xl border border-slate-200 p-8 hover:border-rose-300 hover:shadow-xl hover:shadow-rose-100/50 transition-all duration-300 block"
+          >
+            <div className="absolute inset-0 bg-gradient-to-br from-rose-50/50 to-transparent rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity" />
+            <div className="relative">
+              <div className="w-14 h-14 bg-gradient-to-br from-rose-500 to-orange-500 rounded-xl flex items-center justify-center mb-6 shadow-lg shadow-rose-200/50 group-hover:scale-105 transition-transform">
+                <Brush className="w-7 h-7 text-white" />
+              </div>
+              <h3 className="text-xl font-bold text-slate-900 mb-3">
+                Sketch Canvas AI
+              </h3>
+              <p className="text-slate-600 mb-6 leading-relaxed">
+                Draw and let AI help you build your scene. Add elements with natural language
+                and render your sketches as polished artwork.
+              </p>
+              <div className="flex flex-wrap gap-2 mb-6">
+                <span className="px-3 py-1 bg-rose-50 text-rose-700 text-xs font-medium rounded-full">
+                  AI Drawing
+                </span>
+                <span className="px-3 py-1 bg-orange-50 text-orange-700 text-xs font-medium rounded-full">
+                  Scene Building
+                </span>
+                <span className="px-3 py-1 bg-slate-100 text-slate-600 text-xs font-medium rounded-full">
+                  Art Rendering
+                </span>
+              </div>
+              <div className="flex items-center text-rose-600 font-semibold group-hover:gap-3 gap-2 transition-all">
                 <span>Try it out</span>
                 <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
               </div>

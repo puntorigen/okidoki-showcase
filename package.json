@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@google/genai": "^1.36.0",
     "docx-diff-editor": "^1.0.62",
     "lucide-react": "^0.562.0",
     "marked": "^17.0.1",
