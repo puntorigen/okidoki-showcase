@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { 
   AspectRatio, 
   ASPECT_RATIOS, 
+  GRID_CONFIGS,
   DrawingTool,
   SceneState,
 } from './types';
@@ -53,6 +54,20 @@ function SketchCanvasContent() {
   // History state for undo/redo buttons
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
+  
+  // Grid overlay state
+  const [showGrid, setShowGrid] = useState(false);
+  const showGridRef = useRef(showGrid);
+  const aspectRatioRef = useRef(aspectRatio);
+  
+  // Keep refs in sync with state
+  useEffect(() => {
+    showGridRef.current = showGrid;
+  }, [showGrid]);
+  
+  useEffect(() => {
+    aspectRatioRef.current = aspectRatio;
+  }, [aspectRatio]);
   
   // Refs
   const canvasRef = useRef<SketchCanvasRef>(null);
@@ -105,6 +120,9 @@ function SketchCanvasContent() {
       setSceneState,
       setLastFinalRender,
       setShowRenderModal,
+      getShowGrid: () => showGridRef.current,
+      setShowGrid,
+      getGridConfig: () => GRID_CONFIGS[aspectRatioRef.current],
     });
 
     widget.registerTools(tools);
@@ -132,6 +150,11 @@ function SketchCanvasContent() {
   const handleHistoryChange = useCallback((newCanUndo: boolean, newCanRedo: boolean) => {
     setCanUndo(newCanUndo);
     setCanRedo(newCanRedo);
+  }, []);
+
+  // Handle grid toggle
+  const handleToggleGrid = useCallback(() => {
+    setShowGrid(prev => !prev);
   }, []);
 
   // Handle aspect ratio change
@@ -224,6 +247,8 @@ function SketchCanvasContent() {
             onColorChange={setDrawColor}
             isSketchMode={isSketchMode}
             onModeChange={setIsSketchMode}
+            showGrid={showGrid}
+            onToggleGrid={handleToggleGrid}
           />
           
           {/* Canvas */}
@@ -235,6 +260,8 @@ function SketchCanvasContent() {
               isRendering={isRendering}
               isSketchMode={isSketchMode}
               drawColor={drawColor}
+              showGrid={showGrid}
+              gridConfig={GRID_CONFIGS[aspectRatio]}
               onHistoryChange={handleHistoryChange}
             />
           </div>

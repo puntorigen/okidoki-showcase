@@ -11,14 +11,22 @@ import React, {
 import { 
   CanvasSize, 
   DrawingTool, 
+  GridConfig,
   SKETCH_COLOR, 
   SKETCH_LINE_WIDTH,
   ERASER_LINE_WIDTH,
 } from '../types';
 
 export interface SketchCanvasRef {
-  // Get merged canvas as base64 (for AI)
+  // Get merged canvas as base64 (for AI) - WITHOUT grid
   getSketchBase64: () => string;
+  
+  // Get canvas WITH target markers at specified cell positions
+  // Markers are blue crosshairs to indicate placement positions
+  getSketchWithTargetMarkers: (targetCells: number[]) => string;
+  
+  // Get grid config for current aspect ratio
+  getGridConfig: () => GridConfig;
   
   // Clear all layers
   clear: () => void;
@@ -48,6 +56,8 @@ interface SketchCanvasProps {
   isRendering: boolean;
   isSketchMode: boolean;
   drawColor: string;
+  showGrid: boolean;
+  gridConfig: GridConfig;
   onHistoryChange?: (canUndo: boolean, canRedo: boolean) => void;
 }
 
@@ -59,11 +69,12 @@ interface LayerHistory {
 const MAX_HISTORY = 20;
 
 export const SketchCanvas = forwardRef<SketchCanvasRef, SketchCanvasProps>(
-  function SketchCanvas({ size, activeTool, isRendering, isSketchMode, drawColor, onHistoryChange }, ref) {
+  function SketchCanvas({ size, activeTool, isRendering, isSketchMode, drawColor, showGrid, gridConfig, onHistoryChange }, ref) {
     // Three canvases: sketch layer, color layer, display (composite)
     const sketchCanvasRef = useRef<HTMLCanvasElement>(null);
     const colorCanvasRef = useRef<HTMLCanvasElement>(null);
     const displayCanvasRef = useRef<HTMLCanvasElement>(null);
+    const gridCanvasRef = useRef<HTMLCanvasElement>(null); // Grid overlay (visual only)
     const containerRef = useRef<HTMLDivElement>(null);
     const [scale, setScale] = useState(1);
     
@@ -81,7 +92,78 @@ export const SketchCanvas = forwardRef<SketchCanvasRef, SketchCanvasProps>(
       return isSketchMode ? sketchCanvasRef.current : colorCanvasRef.current;
     }, [isSketchMode]);
 
+    // Draw grid onto a canvas context
+    // Grid is translucent (no fill), only lines and numbers are visible
+    const drawGrid = useCallback((ctx: CanvasRenderingContext2D, width: number, height: number) => {
+      const { cols, rows } = gridConfig;
+      const cellWidth = width / cols;
+      const cellHeight = height / rows;
+      const fontSize = Math.min(cellWidth, cellHeight) * 0.25;
+      
+      // Grid lines - solid dark gray
+      ctx.strokeStyle = 'rgba(60, 60, 60, 0.8)';
+      ctx.lineWidth = 2;
+      
+      // Vertical lines
+      for (let i = 1; i < cols; i++) {
+        const x = i * cellWidth;
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, height);
+        ctx.stroke();
+      }
+      
+      // Horizontal lines
+      for (let i = 1; i < rows; i++) {
+        const y = i * cellHeight;
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(width, y);
+        ctx.stroke();
+      }
+      
+      // Cell numbers with subtle background pill for readability
+      ctx.font = `bold ${fontSize}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      
+      let cellNum = 1;
+      for (let row = 0; row < rows; row++) {
+        for (let col = 0; col < cols; col++) {
+          const x = col * cellWidth + cellWidth / 2;
+          const y = row * cellHeight + cellHeight / 2;
+          const text = String(cellNum);
+          const textWidth = ctx.measureText(text).width;
+          const padding = fontSize * 0.4;
+          
+          // Semi-transparent background pill behind number
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+          ctx.beginPath();
+          ctx.roundRect(
+            x - textWidth / 2 - padding, 
+            y - fontSize / 2 - padding * 0.5, 
+            textWidth + padding * 2, 
+            fontSize + padding,
+            fontSize * 0.3
+          );
+          ctx.fill();
+          
+          // Number text
+          ctx.fillStyle = 'rgba(50, 50, 50, 0.9)';
+          ctx.fillText(text, x, y);
+          cellNum++;
+        }
+      }
+    }, [gridConfig]);
+
+    // Ref to track current grid visibility (avoids dependency issues)
+    const showGridRef = useRef(showGrid);
+    useEffect(() => {
+      showGridRef.current = showGrid;
+    }, [showGrid]);
+
     // Composite both layers onto the display canvas
+    // Note: Uses showGridRef to avoid dependency chain that would cause canvas clearing
     const compositeDisplay = useCallback(() => {
       const display = displayCanvasRef.current;
       const sketch = sketchCanvasRef.current;
@@ -99,7 +181,12 @@ export const SketchCanvas = forwardRef<SketchCanvasRef, SketchCanvasProps>(
       
       // Draw sketch layer on top
       ctx.drawImage(sketch, 0, 0);
-    }, []);
+      
+      // Draw grid overlay if enabled (read from ref to avoid dep chain)
+      if (showGridRef.current) {
+        drawGrid(ctx, display.width, display.height);
+      }
+    }, [drawGrid]);
 
     // Initialize all canvases (layers are transparent, display has white bg)
     // This also RESETS history completely
@@ -133,6 +220,14 @@ export const SketchCanvas = forwardRef<SketchCanvasRef, SketchCanvasProps>(
     useEffect(() => {
       initCanvas();
     }, [size, initCanvas]);
+
+    // Re-composite when grid visibility changes
+    useEffect(() => {
+      // Update ref first, then re-composite
+      showGridRef.current = showGrid;
+      compositeDisplay();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [showGrid]);
 
     // Calculate scale for responsive canvas
     useEffect(() => {
@@ -347,14 +442,88 @@ export const SketchCanvas = forwardRef<SketchCanvasRef, SketchCanvasProps>(
     // Expose methods via ref
     useImperativeHandle(ref, () => ({
       getSketchBase64: () => {
-        // Return the composited display canvas (white bg + both layers)
+        // Return the composited display canvas (white bg + both layers, NO grid)
         const display = displayCanvasRef.current;
-        if (!display) return '';
+        const sketch = sketchCanvasRef.current;
+        const color = colorCanvasRef.current;
+        const ctx = display?.getContext('2d');
         
-        // Make sure composite is up to date
-        compositeDisplay();
-        return display.toDataURL('image/png');
+        if (!display || !sketch || !color || !ctx) return '';
+        
+        // Composite without grid
+        ctx.fillStyle = 'white';
+        ctx.fillRect(0, 0, display.width, display.height);
+        ctx.drawImage(color, 0, 0);
+        ctx.drawImage(sketch, 0, 0);
+        
+        const result = display.toDataURL('image/png');
+        
+        // Restore grid if it was showing (use ref to avoid stale closure)
+        if (showGridRef.current) {
+          drawGrid(ctx, display.width, display.height);
+        }
+        
+        return result;
       },
+      
+      getSketchWithTargetMarkers: (targetCells: number[]) => {
+        // Return canvas WITH small target dot markers at specified cell positions
+        // These markers indicate where to place elements - kept minimal to avoid AI copying them
+        const display = displayCanvasRef.current;
+        const sketch = sketchCanvasRef.current;
+        const color = colorCanvasRef.current;
+        const ctx = display?.getContext('2d');
+        
+        if (!display || !sketch || !color || !ctx) return '';
+        
+        const { cols, rows } = gridConfig;
+        const cellWidth = display.width / cols;
+        const cellHeight = display.height / rows;
+        
+        // First composite the canvas normally
+        ctx.fillStyle = 'white';
+        ctx.fillRect(0, 0, display.width, display.height);
+        ctx.drawImage(color, 0, 0);
+        ctx.drawImage(sketch, 0, 0);
+        
+        // Draw small blue dot markers at target cell centers
+        // Keep them small and simple so AI doesn't copy them
+        const dotRadius = Math.min(cellWidth, cellHeight) * 0.06; // Small dot
+        const haloRadius = dotRadius * 2.5;
+        
+        for (const cellNum of targetCells) {
+          if (cellNum < 1 || cellNum > cols * rows) continue;
+          
+          // Convert cell number to row/col (1-indexed, left-to-right, top-to-bottom)
+          const cellIndex = cellNum - 1;
+          const col = cellIndex % cols;
+          const row = Math.floor(cellIndex / cols);
+          
+          const centerX = col * cellWidth + cellWidth / 2;
+          const centerY = row * cellHeight + cellHeight / 2;
+          
+          // Draw outer halo (light blue, semi-transparent)
+          ctx.fillStyle = 'rgba(0, 150, 255, 0.3)';
+          ctx.beginPath();
+          ctx.arc(centerX, centerY, haloRadius, 0, Math.PI * 2);
+          ctx.fill();
+          
+          // Draw inner dot (solid blue)
+          ctx.fillStyle = 'rgba(0, 100, 255, 0.9)';
+          ctx.beginPath();
+          ctx.arc(centerX, centerY, dotRadius, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        
+        const result = display.toDataURL('image/png');
+        
+        // Restore display to current state
+        compositeDisplay();
+        
+        return result;
+      },
+      
+      getGridConfig: () => gridConfig,
       
       clear: () => {
         // Just reset - don't save current state (we're clearing everything)
@@ -426,7 +595,7 @@ export const SketchCanvas = forwardRef<SketchCanvasRef, SketchCanvasProps>(
         saveStateBeforeStroke();
         compositeDisplay();
       },
-    }), [initCanvas, saveStateBeforeStroke, compositeDisplay, loadImageToCanvas, notifyHistoryChange]);
+    }), [initCanvas, saveStateBeforeStroke, compositeDisplay, loadImageToCanvas, notifyHistoryChange, drawGrid]);
 
     // Cursor based on tool
     const getCursor = () => {

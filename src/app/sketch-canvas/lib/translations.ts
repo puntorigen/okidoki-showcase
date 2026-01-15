@@ -20,6 +20,8 @@ interface Translations {
   redo: string;
   clearCanvas: string;
   renderWithAI: string;
+  showGrid: string;
+  hideGrid: string;
   
   // Aspect ratios
   portrait: string;
@@ -85,6 +87,8 @@ export const translations: Record<Language, Translations> = {
     redo: 'Redo',
     clearCanvas: 'Clear canvas',
     renderWithAI: 'Render with AI',
+    showGrid: 'Show position grid',
+    hideGrid: 'Hide position grid',
     
     // Aspect ratios
     portrait: 'Portrait',
@@ -148,6 +152,8 @@ export const translations: Record<Language, Translations> = {
     redo: 'Rehacer',
     clearCanvas: 'Limpiar lienzo',
     renderWithAI: 'Renderizar con IA',
+    showGrid: 'Mostrar cuadrícula',
+    hideGrid: 'Ocultar cuadrícula',
     
     // Aspect ratios
     portrait: 'Vertical',

@@ -17,6 +17,18 @@ export const ASPECT_RATIOS: Record<AspectRatio, CanvasSize> = {
   standard: { width: 1024, height: 768, label: '4:3' },
 };
 
+// Grid configuration per aspect ratio
+export interface GridConfig {
+  cols: number;
+  rows: number;
+}
+
+export const GRID_CONFIGS: Record<AspectRatio, GridConfig> = {
+  portrait: { cols: 3, rows: 4 },   // 12 cells
+  landscape: { cols: 4, rows: 3 },  // 12 cells
+  standard: { cols: 3, rows: 3 },   // 9 cells
+};
+
 // Drawing tool options
 export type DrawingTool = 'pencil' | 'eraser';
 

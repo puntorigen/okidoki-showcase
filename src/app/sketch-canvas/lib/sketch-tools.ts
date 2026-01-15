@@ -4,7 +4,7 @@
  */
 
 import type { SketchCanvasRef } from '../components/SketchCanvas';
-import type { SceneState } from '../types';
+import type { SceneState, GridConfig } from '../types';
 import { renderSketch, describeCanvas, finalRender } from '../services/gemini';
 
 interface ToolContext {
@@ -13,10 +13,95 @@ interface ToolContext {
   setSceneState: (state: SceneState) => void;
   setLastFinalRender: (image: string | null) => void;
   setShowRenderModal: (show: boolean) => void;
+  // Grid state - using getter to always have current value
+  getShowGrid: () => boolean;
+  setShowGrid: (show: boolean) => void;
+  getGridConfig: () => GridConfig;
 }
 
 // Current scene description (updated after each render)
 let currentSceneDescription = '';
+
+/**
+ * Build marker context for prompt when target cells are specified
+ * Includes both visual marker description AND precise textual positioning
+ */
+function buildMarkerContext(targetCells: number[], gridConfig: GridConfig): string {
+  const { cols, rows } = gridConfig;
+  const plural = targetCells.length > 1;
+  
+  // Calculate cell size as percentage
+  const cellWidthPercent = Math.round(100 / cols);
+  const cellHeightPercent = Math.round(100 / rows);
+  
+  // Build detailed position descriptions for each cell
+  const positionDescriptions = targetCells.map(cellNum => {
+    const cellIndex = cellNum - 1;
+    const col = cellIndex % cols;
+    const row = Math.floor(cellIndex / cols);
+    
+    // Calculate cell boundaries as percentages
+    const leftBound = Math.round(col / cols * 100);
+    const rightBound = Math.round((col + 1) / cols * 100);
+    const topBound = Math.round(row / rows * 100);
+    const bottomBound = Math.round((row + 1) / rows * 100);
+    const centerX = Math.round((col + 0.5) / cols * 100);
+    const centerY = Math.round((row + 0.5) / rows * 100);
+    
+    return `Cell ${cellNum}: Center at (${centerX}%, ${centerY}%), boundaries: left ${leftBound}% to ${rightBound}%, top ${topBound}% to ${bottomBound}%`;
+  }).join('\n');
+  
+  return `
+PRECISE POSITIONING - READ CAREFULLY:
+
+The canvas is divided into a ${cols}x${rows} grid. Each cell is ${cellWidthPercent}% wide and ${cellHeightPercent}% tall.
+
+${positionDescriptions}
+
+A small BLUE DOT marks ${plural ? 'each' : 'the'} target cell center on the canvas.
+
+**CRITICAL REQUIREMENTS:**
+1. Draw the element SMALL - it must FIT ENTIRELY WITHIN the cell boundaries above
+2. CENTER the element on the blue dot position
+3. The element should be roughly ${Math.min(cellWidthPercent, cellHeightPercent) * 0.7}% of canvas size (fitting inside the cell)
+4. **REMOVE THE BLUE DOT** - your output must NOT contain any blue dots, circles, or markers
+5. Draw ONLY in RED/pink color - no blue anywhere in your output
+6. The blue dot is a PLACEMENT GUIDE ONLY - erase it and draw your element there instead
+`;
+}
+
+/**
+ * Build grid position description for prompt
+ * Translates cell numbers to natural spatial positions (no grid image sent to AI)
+ */
+function buildGridContext(gridConfig: GridConfig): string {
+  const { cols, rows } = gridConfig;
+  
+  // Build spatial mapping based on grid dimensions
+  const topRow = `cells 1-${cols}`;
+  const bottomRow = `cells ${(rows - 1) * cols + 1}-${rows * cols}`;
+  
+  return `
+POSITION REFERENCE: The user sees a ${cols}x${rows} numbered grid overlay on their canvas.
+If they reference cell numbers, translate to canvas positions:
+
+Grid mapping (${cols} columns × ${rows} rows):
+- ${topRow} = TOP of canvas (left to right)
+- ${bottomRow} = BOTTOM of canvas (left to right)
+- Left column (cells ${Array.from({length: rows}, (_, i) => 1 + i * cols).join(', ')}) = LEFT edge
+- Right column (cells ${Array.from({length: rows}, (_, i) => cols + i * cols).join(', ')}) = RIGHT edge
+- Center cells = MIDDLE/CENTER of canvas
+
+Examples:
+- "cell 1" = top-left corner
+- "cell ${cols}" = top-right corner  
+- "cell ${(rows - 1) * cols + 1}" = bottom-left corner
+- "cell ${rows * cols}" = bottom-right corner
+- "cells ${Math.ceil(cols/2)}, ${Math.ceil(cols/2) + cols}" = upper-center area
+
+Position elements according to these spatial regions. Do NOT draw any grid lines or numbers.
+`;
+}
 
 /**
  * Build the prompt for sketch rendering
@@ -26,7 +111,7 @@ let currentSceneDescription = '';
  * - Other colors ONLY when explicitly adding color references/hints
  * - MINIMAL strokes - simple shapes a user could draw with a mouse
  */
-function buildSketchPrompt(currentScene: string, action: string): string {
+function buildSketchPrompt(currentScene: string, action: string, gridContext?: string): string {
   const basePrompt = `You are collaboratively sketching WITH the user on a shared canvas.
 
 CRITICAL DRAWING RULES:
@@ -48,6 +133,7 @@ CRITICAL DRAWING RULES:
    - The goal is to show WHAT and WHERE, not beauty
    - User will refine or add details themselves
 
+${gridContext || ''}
 `;
 
   if (!currentScene || currentScene === 'empty canvas') {
@@ -79,28 +165,47 @@ Generate the updated sketch with the modification ACTUALLY APPLIED.`;
  * Create client-side tools for Okidoki
  */
 export function createSketchTools(context: ToolContext) {
-  const { canvasRef, setIsRendering, setSceneState, setLastFinalRender, setShowRenderModal } = context;
+  const { 
+    canvasRef, 
+    setIsRendering, 
+    setSceneState, 
+    setLastFinalRender, 
+    setShowRenderModal,
+    getShowGrid,
+    setShowGrid,
+    getGridConfig,
+  } = context;
 
   const getCanvas = () => canvasRef.current;
+  
+  // Get grid context string if grid is visible
+  const getGridContextIfVisible = () => getShowGrid() ? buildGridContext(getGridConfig()) : undefined;
 
   return [
     // 1. RENDER SKETCH - Add, modify, or remove elements
     {
       name: 'render_sketch',
-      description: `Add, modify, or remove elements in the sketch. Each call builds on what's currently visible on the canvas. 
-Examples: 
-- "add a bright sun in the top right corner"
-- "add green grass at the bottom"  
-- "remove the sun from the scene"
-- "make the mountains taller"
-Use this for any scene modification.`,
+      description: `Add, modify, or remove elements in the sketch. Each call builds on what's currently visible on the canvas.
+
+IMPORTANT: If the user mentions cell numbers (e.g., "cell 2", "cells 3,4,5"), you MUST extract those numbers and pass them in targetCells.
+
+Examples:
+- User: "add a sun" → action: "add a bright sun", targetCells: undefined
+- User: "add a sun in cell 2" → action: "add a bright sun", targetCells: [2]
+- User: "draw a tree in cells 5 and 6" → action: "draw a tree", targetCells: [5, 6]
+- User: "put mountains across cells 9,10,11,12" → action: "draw mountains", targetCells: [9, 10, 11, 12]`,
       input: {
         action: {
           type: 'string',
-          description: 'What to do: add, modify, or remove something from the scene. Be descriptive.',
+          description: 'WHAT to draw/modify/remove. Describe the element WITHOUT the cell position (cell position goes in targetCells). Example: "add a bright yellow sun" or "remove the tree".',
+        },
+        targetCells: {
+          type: 'array',
+          items: { type: 'number' },
+          description: 'REQUIRED if user mentions cell numbers. Extract ALL cell numbers from user request. Examples: "cell 2" → [2], "cells 3 and 4" → [3, 4], "cells 1-4" → [1, 2, 3, 4]. A position marker will be drawn at each cell center to guide the AI where to place the element.',
         },
       },
-      handler: async ({ action }: { action: string }) => {
+      handler: async ({ action, targetCells }: { action: string; targetCells?: number[] }) => {
         const canvas = getCanvas();
         if (!canvas) {
           return { success: false, error: 'Canvas not ready' };
@@ -114,11 +219,18 @@ Use this for any scene modification.`,
           // 1. Save current state for undo
           canvas.saveState();
 
-          // 2. Get current canvas
-          const sketchBase64 = canvas.getSketchBase64();
+          // 2. Get canvas - with target markers if cells are specified
+          const hasTargetCells = targetCells && targetCells.length > 0;
+          const sketchBase64 = hasTargetCells
+            ? canvas.getSketchWithTargetMarkers(targetCells)
+            : canvas.getSketchBase64();
 
-          // 3. Build prompt with current scene + action
-          const prompt = buildSketchPrompt(currentSceneDescription, action);
+          // 3. Build prompt with current scene + action + positioning context
+          // Use marker context if specific cells provided, otherwise general grid context if visible
+          const positionContext = hasTargetCells 
+            ? buildMarkerContext(targetCells, getGridConfig())
+            : getGridContextIfVisible();
+          const prompt = buildSketchPrompt(currentSceneDescription, action, positionContext);
           console.log('[Tool] render_sketch prompt:', prompt.substring(0, 200) + '...');
 
           // 4. Render with Gemini
@@ -261,6 +373,43 @@ Examples:
         return {
           success: true,
           scene: currentSceneDescription || 'empty canvas',
+        };
+      },
+    },
+
+    // 5. SHOW GRID - Show the position grid overlay
+    {
+      name: 'show_grid',
+      description: `Show a numbered grid overlay on the canvas for positioning elements.
+The grid divides the canvas into numbered cells (e.g., 1-12 for landscape/portrait, 1-9 for standard).
+Use this when the user wants to place elements in specific positions like "add a sun in cell 3" or "put a tree in cells 7,8,10,11".
+After showing the grid, element positions can be specified by cell number.`,
+      input: {},
+      handler: async () => {
+        const config = getGridConfig();
+        setShowGrid(true);
+        return {
+          success: true,
+          message: `Grid is now visible with ${config.cols}x${config.rows} cells (${config.cols * config.rows} total). Cells are numbered 1-${config.cols * config.rows}, left-to-right, top-to-bottom.`,
+          gridInfo: {
+            cols: config.cols,
+            rows: config.rows,
+            totalCells: config.cols * config.rows,
+          },
+        };
+      },
+    },
+
+    // 6. HIDE GRID - Hide the position grid overlay
+    {
+      name: 'hide_grid',
+      description: 'Hide the numbered grid overlay from the canvas. Use when the user is done positioning elements or wants a cleaner view.',
+      input: {},
+      handler: async () => {
+        setShowGrid(false);
+        return {
+          success: true,
+          message: 'Grid is now hidden.',
         };
       },
     },

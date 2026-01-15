@@ -4,10 +4,14 @@
  * Gemini Server Services for Sketch Canvas
  * 
  * Using Next.js server actions for clean API without endpoint boilerplate.
- * Based on the working approach from creative-canvas-ai.
+ * Updated for Gemini 3 API (January 2025)
+ * 
+ * Models used:
+ * - gemini-3-pro-image-preview: For image generation (sketch rendering, final artwork)
+ * - gemini-3-flash-preview: For text-only tasks (canvas description)
  */
 
-import { GoogleGenAI, Modality } from '@google/genai';
+import { GoogleGenAI } from '@google/genai';
 
 // Get API key from environment
 const API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENAI_API_KEY;
@@ -31,6 +35,13 @@ const stripBase64Prefix = (base64: string): string => {
 
 /**
  * Generate/update a sketch based on current canvas + prompt
+ * Uses gemini-3-pro-image-preview for image-to-image generation
+ * 
+ * Note: Grid positioning is handled via text prompt only (no grid image).
+ * This prevents the AI from including grid lines in its output.
+ * 
+ * @param sketchBase64 - The canvas content (without grid)
+ * @param prompt - The text prompt describing the action (includes grid position context if needed)
  */
 export async function renderSketch(
   sketchBase64: string,
@@ -40,7 +51,7 @@ export async function renderSketch(
     const ai = getClient();
 
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-image-preview',
+      model: 'gemini-3-pro-image-preview',
       contents: {
         parts: [
           {
@@ -53,7 +64,8 @@ export async function renderSketch(
         ],
       },
       config: {
-        responseModalities: [Modality.IMAGE, Modality.TEXT],
+        // Request both text and image output
+        responseModalities: ['TEXT', 'IMAGE'],
       },
     });
 
@@ -66,7 +78,7 @@ export async function renderSketch(
       if (blockReason) {
         errorMessage = `Request blocked: ${blockReason}. ${blockMessage || ''}`.trim();
       }
-      console.error('[Gemini] Invalid response:', response);
+      console.error('[Gemini] Invalid response:', JSON.stringify(response, null, 2));
       return { success: false, error: errorMessage };
     }
 
@@ -80,7 +92,10 @@ export async function renderSketch(
       }
     }
 
-    console.warn('[Gemini] No image in response');
+    // Log the response for debugging
+    console.warn('[Gemini] No image in response. Parts:', 
+      candidate.content.parts.map(p => p.text ? 'text' : p.inlineData ? 'image' : 'unknown')
+    );
     return { success: false, error: 'No image generated' };
   } catch (error) {
     console.error('[Gemini] renderSketch error:', error);
@@ -90,6 +105,7 @@ export async function renderSketch(
 
 /**
  * Describe what's currently visible on the canvas
+ * Uses gemini-3-flash-preview for fast text-only response
  */
 export async function describeCanvas(
   canvasBase64: string
@@ -98,7 +114,7 @@ export async function describeCanvas(
     const ai = getClient();
 
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3-flash-preview',
       contents: {
         parts: [
           {
@@ -132,6 +148,7 @@ If the canvas is blank, white, or nearly empty with no distinct elements, respon
 
 /**
  * Create a polished artistic render of the canvas
+ * Uses gemini-3-pro-image-preview for high-quality image generation
  */
 export async function finalRender(
   canvasBase64: string,
@@ -162,7 +179,7 @@ RULES:
 Style: ${style}`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-image-preview',
+      model: 'gemini-3-pro-image-preview',
       contents: {
         parts: [
           {
@@ -175,7 +192,8 @@ Style: ${style}`;
         ],
       },
       config: {
-        responseModalities: [Modality.IMAGE, Modality.TEXT],
+        // Request both text and image output
+        responseModalities: ['TEXT', 'IMAGE'],
       },
     });
 

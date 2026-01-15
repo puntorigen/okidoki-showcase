@@ -30,6 +30,8 @@ interface CanvasToolbarProps {
   onColorChange: (color: string) => void;
   isSketchMode: boolean;
   onModeChange: (isSketch: boolean) => void;
+  showGrid: boolean;
+  onToggleGrid: () => void;
 }
 
 export function CanvasToolbar({
@@ -46,6 +48,8 @@ export function CanvasToolbar({
   onColorChange,
   isSketchMode,
   onModeChange,
+  showGrid,
+  onToggleGrid,
 }: CanvasToolbarProps) {
   const { t } = useLanguage();
 
@@ -187,6 +191,24 @@ export function CanvasToolbar({
         >
           <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+
+        <div className="w-px h-6 bg-slate-600 mx-2" />
+
+        {/* Grid toggle */}
+        <button
+          onClick={onToggleGrid}
+          disabled={isRendering}
+          className={`p-2 rounded-lg transition-colors cursor-pointer ${
+            showGrid
+              ? 'bg-amber-500 text-white'
+              : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+          } disabled:opacity-50 disabled:cursor-not-allowed`}
+          title={showGrid ? t('hideGrid') : t('showGrid')}
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16M10 6v12M14 6v12" />
           </svg>
         </button>
       </div>
