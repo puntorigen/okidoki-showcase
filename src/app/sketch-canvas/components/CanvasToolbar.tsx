@@ -21,9 +21,11 @@ interface CanvasToolbarProps {
   onToolChange: (tool: DrawingTool) => void;
   onClear: () => void;
   onUndo: () => void;
+  onRedo: () => void;
   onRenderWithAI: () => void;
   isRendering: boolean;
   canUndo: boolean;
+  canRedo: boolean;
   drawColor: string;
   onColorChange: (color: string) => void;
   isSketchMode: boolean;
@@ -35,9 +37,11 @@ export function CanvasToolbar({
   onToolChange,
   onClear,
   onUndo,
+  onRedo,
   onRenderWithAI,
   isRendering,
   canUndo,
+  canRedo,
   drawColor,
   onColorChange,
   isSketchMode,
@@ -159,6 +163,18 @@ export function CanvasToolbar({
         >
           <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+          </svg>
+        </button>
+
+        {/* Redo */}
+        <button
+          onClick={onRedo}
+          disabled={isRendering || !canRedo}
+          className="p-2 rounded-lg bg-slate-700 text-slate-300 hover:bg-slate-600 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+          title={t('redo')}
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 10h-10a8 8 0 00-8 8v2M21 10l-6 6m6-6l-6-6" />
           </svg>
         </button>
 

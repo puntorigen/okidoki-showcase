@@ -20,29 +20,59 @@ let currentSceneDescription = '';
 
 /**
  * Build the prompt for sketch rendering
+ * 
+ * The AI draws collaboratively with the user, using the SAME visual language:
+ * - Semi-translucent RED for all shapes, outlines, and structural elements
+ * - Other colors ONLY when explicitly adding color references/hints
+ * - MINIMAL strokes - simple shapes a user could draw with a mouse
  */
 function buildSketchPrompt(currentScene: string, action: string): string {
-  const basePrompt = `You are creating a sketch drawing.
+  const basePrompt = `You are collaboratively sketching WITH the user on a shared canvas.
 
-STYLE: Simple sketch lines, hand-drawn feel, work-in-progress aesthetic.
-The user draws with semi-translucent RED lines as guides.
+CRITICAL DRAWING RULES:
+
+1. COLOR: Use ONLY semi-translucent RED (rgba 255,0,0 ~60% opacity) for shapes
+   - Other colors ONLY if user explicitly asks for color hints
+
+2. SIMPLICITY: Draw like someone using a MOUSE would draw:
+   - Simple outlines with MINIMAL strokes (5-15 strokes max per object)
+   - Basic geometric shapes (circles, rectangles, triangles, simple curves)
+   - NO shading, NO hatching, NO texture lines, NO fill patterns
+   - NO details like bricks, shingles, or intricate features
+   - A house = rectangle + triangle roof + rectangle windows. That's it.
+   - A sun = circle + a few lines for rays
+   - A tree = vertical line + oval/cloud shape on top
+
+3. THIS IS A GUIDE SKETCH, NOT ART:
+   - Rough, imperfect lines are fine
+   - The goal is to show WHAT and WHERE, not beauty
+   - User will refine or add details themselves
 
 `;
 
   if (!currentScene || currentScene === 'empty canvas') {
-    return basePrompt + `The canvas is currently BLANK or shows only rough red guide lines.
+    return basePrompt + `The canvas is currently BLANK or has only rough user marks.
 
-Create a sketch based on this instruction: ${action}
+ACTION: ${action}
 
-Generate a simple sketch that follows the composition hints from any red lines visible.`;
+Draw using semi-translucent RED with minimal, simple strokes.
+Keep it basic - the user will add details if they want them.`;
   }
 
-  return basePrompt + `The canvas currently shows: ${currentScene}
+  return basePrompt + `CURRENT CANVAS: ${currentScene}
 
-IMPORTANT: Preserve all existing elements visible on the canvas.
-Now apply this change: ${action}
+ACTION TO APPLY: ${action}
 
-Generate the updated sketch incorporating the change while keeping existing content.`;
+MODIFICATION RULES:
+- If ADDING something: Draw it with minimal strokes in semi-translucent red
+- If REMOVING something: Erase/remove that element completely from the canvas
+- If CHANGING something (resize, move, modify): Actually CHANGE it - don't just redraw the same thing
+  - "make smaller" = draw it at REDUCED size
+  - "make bigger" = draw it at LARGER size  
+  - "move to the left" = reposition it to the left
+- PRESERVE all other elements exactly as they are
+
+Generate the updated sketch with the modification ACTUALLY APPLIED.`;
 }
 
 /**

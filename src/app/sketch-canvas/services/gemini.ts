@@ -142,12 +142,22 @@ export async function finalRender(
 
     const prompt = `Transform this sketch into a finished ${style} artwork.
 
+UNDERSTANDING THE SKETCH:
+- **Red/pink lines**: These are shape and composition guides showing outlines, structure, and object boundaries
+- **Colored areas** (non-red colors): These are COLOR REFERENCES indicating what colors should be used in those regions
+
+IMPORTANT: The colored areas are NOT literal overlays. They are color palette hints. For example:
+- A blue area on a shape means "render this shape in blue tones"
+- Green patches at the bottom suggest "use green for the ground/grass here"
+- Yellow near the top might indicate "make this area sunny/bright yellow"
+
 RULES:
-1. Preserve the exact composition and all elements shown
-2. Apply professional ${style} techniques, textures, and finishing
-3. The result should look like a completed artwork, not a sketch
-4. Maintain the positions and proportions of all elements
-5. Add appropriate shading, details, and artistic flair
+1. Interpret red lines as the shapes and objects to render
+2. Use the colored areas as color guidance for those regions—apply colors naturally to the rendered objects, not as flat overlays
+3. Apply professional ${style} techniques, textures, and artistic finishing
+4. The result should look like a completed artwork, not a sketch
+5. Maintain the positions and proportions of all elements
+6. Add appropriate shading, details, and artistic flair that complement the indicated colors
 
 Style: ${style}`;
 

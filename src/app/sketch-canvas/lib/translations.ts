@@ -17,6 +17,7 @@ interface Translations {
   pencilColor: string;
   eraser: string;
   undo: string;
+  redo: string;
   clearCanvas: string;
   renderWithAI: string;
   
@@ -81,6 +82,7 @@ export const translations: Record<Language, Translations> = {
     pencilColor: 'Pencil (draw with selected color)',
     eraser: 'Eraser',
     undo: 'Undo',
+    redo: 'Redo',
     clearCanvas: 'Clear canvas',
     renderWithAI: 'Render with AI',
     
@@ -143,6 +145,7 @@ export const translations: Record<Language, Translations> = {
     pencilColor: 'Lápiz (dibujar con color seleccionado)',
     eraser: 'Borrador',
     undo: 'Deshacer',
+    redo: 'Rehacer',
     clearCanvas: 'Limpiar lienzo',
     renderWithAI: 'Renderizar con IA',
     

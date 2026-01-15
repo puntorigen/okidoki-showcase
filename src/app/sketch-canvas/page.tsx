@@ -50,6 +50,10 @@ function SketchCanvasContent() {
   // Widget state
   const [widgetReady, setWidgetReady] = useState(false);
   
+  // History state for undo/redo buttons
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
+  
   // Refs
   const canvasRef = useRef<SketchCanvasRef>(null);
   const toolsRegisteredRef = useRef(false);
@@ -117,6 +121,17 @@ function SketchCanvasContent() {
   // Handle undo
   const handleUndo = useCallback(() => {
     canvasRef.current?.undo();
+  }, []);
+
+  // Handle redo
+  const handleRedo = useCallback(() => {
+    canvasRef.current?.redo();
+  }, []);
+
+  // Handle history change from canvas
+  const handleHistoryChange = useCallback((newCanUndo: boolean, newCanRedo: boolean) => {
+    setCanUndo(newCanUndo);
+    setCanRedo(newCanRedo);
   }, []);
 
   // Handle aspect ratio change
@@ -200,9 +215,11 @@ function SketchCanvasContent() {
             onToolChange={setActiveTool}
             onClear={handleClear}
             onUndo={handleUndo}
+            onRedo={handleRedo}
             onRenderWithAI={handleRenderWithAI}
             isRendering={isRendering}
-            canUndo={canvasRef.current?.canUndo() ?? false}
+            canUndo={canUndo}
+            canRedo={canRedo}
             drawColor={drawColor}
             onColorChange={setDrawColor}
             isSketchMode={isSketchMode}
@@ -218,6 +235,7 @@ function SketchCanvasContent() {
               isRendering={isRendering}
               isSketchMode={isSketchMode}
               drawColor={drawColor}
+              onHistoryChange={handleHistoryChange}
             />
           </div>
         </main>
