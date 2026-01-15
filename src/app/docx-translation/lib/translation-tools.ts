@@ -230,7 +230,7 @@ export function createTranslationTools(context: ToolContext) {
       lockGroup: 'doc_mutation',
       parallel: false,
       description:
-        'Create a new document from scratch. Provide a detailed description of what to create. Include ALL relevant details from the conversation: parties involved, specific terms, dates, amounts, requirements, section names, etc.',
+        'Create a NEW document from scratch, replacing any existing content entirely. ONLY use this when the user explicitly asks to CREATE, GENERATE, or WRITE a completely new document (e.g., "create a contract", "write a report", "generate a proposal"). Do NOT use this for modifying, updating, changing, or replacing parts of an existing document - use update_document for that instead.',
       input: {
         title: {
           type: 'string',
@@ -525,7 +525,7 @@ Output ONLY HTML content. Use <h1> for title, <h2> for sections, <p> for paragra
       lockGroup: 'doc_mutation',
       parallel: false,
       description:
-        'Make any change to the existing document. Use for: replacing text, fixing typos, modifying sections, adding tables, inserting new content, etc.',
+        'Use this tool whenever the user wants to UPDATE, CHANGE, MODIFY, EDIT, FIX, REPLACE, ADD, INSERT, DELETE, or REMOVE anything in the existing document. This is the PRIMARY tool for any document modification. Examples: "replace the date", "change the title", "update the name", "fix the typo", "add a paragraph", "modify the section", "insert a table". Use this for ANY partial change to the document - do NOT use create_document unless the user wants an entirely new document.',
       input: {
         request: {
           type: 'string',
