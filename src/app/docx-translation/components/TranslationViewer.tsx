@@ -6,7 +6,7 @@
  */
 
 import { useRef, useState, forwardRef, useImperativeHandle, useEffect, useCallback } from 'react';
-import { DocxDiffEditor, DocxDiffEditorRef, DocxContent, EnrichedChange } from 'docx-diff-editor';
+import { DocxDiffEditor, DocxDiffEditorRef, DocxContent, EnrichedChange, EditorError } from 'docx-diff-editor';
 import 'docx-diff-editor/styles.css';
 import { useLanguage } from '../lib/LanguageContext';
 import { DocumentState, DocumentSummary } from '../types';
@@ -158,9 +158,9 @@ const TranslationViewer = forwardRef<TranslationViewerRef, TranslationViewerProp
       console.log('[TranslationViewer] Comparison complete:', result);
     };
 
-    const handleError = (err: Error) => {
-      console.error('[TranslationViewer] Error:', err);
-      setError(err.message);
+    const handleError = (editorError: EditorError) => {
+      console.error('[TranslationViewer] Error:', editorError);
+      setError(editorError.error.message);
     };
 
     // Helper to extract text content from ProseMirror JSON
