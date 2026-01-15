@@ -56,7 +56,7 @@ declare global {
     OkidokiWidget?: {
       init?: (config: { publicKey: string; apiUrl?: string }) => void;
       reinitialize?: (publicKey: string, apiUrl?: string) => void;
-      registerTools?: (tools: any[]) => void;
+      registerTools: (tools: unknown[]) => void;
       unregisterTools?: (names?: string[]) => void;
       setLanguage?: (lang: 'en' | 'es') => void;
       getLanguage?: () => 'en' | 'es';

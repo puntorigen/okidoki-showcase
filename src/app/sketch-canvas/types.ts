@@ -51,21 +51,4 @@ export interface DescribeResult {
   error?: string;
 }
 
-// Global window type for Okidoki widget
-declare global {
-  interface Window {
-    OkidokiWidget?: {
-      reinitialize: (publicKey: string) => void;
-      setLanguage?: (lang: string) => void;
-      registerTools: (tools: unknown[]) => void;
-      unregisterTools?: () => void;
-      setToolNotification?: (message: string | null) => void;
-      ask?: (params: {
-        prompt: string;
-        context?: string;
-        maxTokens?: number;
-      }) => Promise<{ success: boolean; result?: string; error?: string }>;
-      insertMessage?: (message: string, options?: { send?: boolean }) => void;
-    };
-  }
-}
+// Note: Window.OkidokiWidget type is declared in docx-translation/lib/LanguageContext.tsx

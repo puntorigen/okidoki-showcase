@@ -94,7 +94,7 @@ Use this for any scene modification.`,
           // 4. Render with Gemini
           const result = await renderSketch(sketchBase64, prompt);
 
-          if (!result.success || !result.image) {
+          if (!result.success) {
             throw new Error(result.error || 'Failed to render');
           }
 
@@ -181,7 +181,7 @@ Examples:
           const sketchBase64 = canvas.getSketchBase64();
           const result = await finalRender(sketchBase64, style);
 
-          if (!result.success || !result.image) {
+          if (!result.success) {
             throw new Error(result.error || 'Failed to render');
           }
 

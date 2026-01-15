@@ -92,6 +92,9 @@ function SketchCanvasContent() {
     if (!widgetReady || toolsRegisteredRef.current) return;
     if (!canvasRef.current) return;
 
+    const widget = window.OkidokiWidget;
+    if (!widget) return;
+
     const tools = createSketchTools({
       canvasRef,
       setIsRendering,
@@ -100,7 +103,7 @@ function SketchCanvasContent() {
       setShowRenderModal,
     });
 
-    window.OkidokiWidget?.registerTools(tools);
+    widget.registerTools(tools);
     toolsRegisteredRef.current = true;
     console.log('[Okidoki] Tools registered:', tools.map((t: { name: string }) => t.name));
   }, [widgetReady]);
@@ -145,7 +148,7 @@ function SketchCanvasContent() {
       const { finalRender } = await import('./services/gemini');
       const result = await finalRender(sketchBase64, style);
       
-      if (result.success && result.image) {
+      if (result.success) {
         setLastFinalRender(result.image);
         setShowRenderModal(true);
       } else {
