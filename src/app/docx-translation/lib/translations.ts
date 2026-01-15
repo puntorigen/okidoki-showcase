@@ -1,4 +1,4 @@
-// Translations for the Document Translation showcase
+// Translations for the SuperDoc Editor showcase
 
 export type Language = 'en' | 'es';
 
@@ -79,7 +79,7 @@ interface Translations {
 export const translations: Record<Language, Translations> = {
   en: {
     // Header
-    subtitle: 'AI-Powered Document Translation',
+    subtitle: 'Advanced AI-Powered DOCX Editor',
     download: 'Download',
     downloading: 'Downloading...',
     loadDocx: 'Load DOCX',
@@ -96,11 +96,12 @@ export const translations: Record<Language, Translations> = {
     // Tip Bar
     tip: 'Tip',
     tips: [
-      'Upload a document and ask the AI to translate it to any language.',
-      'Try: "Translate this document to Spanish" or "Translate to French"',
-      'The AI preserves formatting, tables, and document structure during translation.',
-      'Large documents (50-100+ pages) are handled with smart batching for consistency.',
-      'Industry-specific terminology is detected and translated appropriately.',
+      'Generate professional documents with AI: contracts, reports, proposals, and more.',
+      'Edit content using natural language: "Make this section more formal" or "Add a conclusion"',
+      'Translate entire documents to any language while preserving formatting and layout.',
+      'Insert new content with full DOCX support: tables, lists, headers, and rich formatting.',
+      'Consistent terminology across translations with industry-aware glossary detection.',
+      'Large documents (50-100+ pages) handled with smart batching for quality and consistency.',
     ],
     
     // Loading states
@@ -119,8 +120,8 @@ export const translations: Record<Language, Translations> = {
     restoreOriginal: 'Restore original document',
     
     // Contextual tips
-    tipEmpty: 'Start typing, drop a DOCX file, or ask the assistant to help',
-    tipHasContent: 'Ready to translate! Click "Translate" or ask the assistant',
+    tipEmpty: 'Start typing, drop a DOCX file, or ask the AI to generate content',
+    tipHasContent: 'Ready! Edit with natural language, translate, or ask the AI for help',
     tipTranslating: 'Translation in progress — you can see the document updating',
     tipComplete: 'Translation complete! Click revert in sidebar if needed',
     tipReverted: 'Original document restored',
@@ -139,8 +140,8 @@ export const translations: Record<Language, Translations> = {
     askForHelp: 'Help',
     // Quick action prompts (sent to AI)
     contractPrompt: 'Write a formal contract document between two parties using placeholders for names, dates, and terms',
-    reportPrompt: 'Create a professional business report in the document editor with executive summary, key findings, analysis, and recommendations sections',
-    helpPrompt: 'What can you help me with in this document editor?',
+    reportPrompt: 'Create a professional business report with a compelling narrative flow. Include an executive summary, key findings, analysis, and recommendations. Write with engaging prose and real example content, using placeholders only for specific data points like dates, figures, and company names that would need to be filled in later.',
+    helpPrompt: 'What can you help me with? I want to know about generating content, editing with natural language, translating documents, and all the DOCX features you support.',
     // Translation overlay
     translatingDocument: 'Translating document',
     analyzingDocument: 'Analyzing document',
@@ -168,7 +169,7 @@ export const translations: Record<Language, Translations> = {
   },
   es: {
     // Header
-    subtitle: 'Traducción de Documentos con IA',
+    subtitle: 'Editor DOCX Avanzado con IA',
     download: 'Descargar',
     downloading: 'Descargando...',
     loadDocx: 'Cargar DOCX',
@@ -185,11 +186,12 @@ export const translations: Record<Language, Translations> = {
     // Tip Bar
     tip: 'Consejo',
     tips: [
-      'Sube un documento y pídele a la IA que lo traduzca a cualquier idioma.',
-      'Prueba: "Traduce este documento al inglés" o "Traducir al francés"',
-      'La IA preserva el formato, tablas y estructura del documento durante la traducción.',
-      'Documentos grandes (50-100+ páginas) se manejan con procesamiento inteligente por lotes.',
-      'La terminología específica de cada industria se detecta y traduce apropiadamente.',
+      'Genera documentos profesionales con IA: contratos, informes, propuestas y más.',
+      'Edita contenido con lenguaje natural: "Hazlo más formal" o "Añade una conclusión"',
+      'Traduce documentos completos a cualquier idioma preservando formato y diseño.',
+      'Inserta nuevo contenido con soporte DOCX completo: tablas, listas, encabezados y formato enriquecido.',
+      'Terminología consistente en traducciones con detección de glosarios por industria.',
+      'Documentos grandes (50-100+ páginas) procesados con lotes inteligentes para calidad y consistencia.',
     ],
     
     // Loading states
@@ -208,8 +210,8 @@ export const translations: Record<Language, Translations> = {
     restoreOriginal: 'Restaurar documento original',
     
     // Contextual tips
-    tipEmpty: 'Escribe, arrastra un DOCX, o pídele ayuda al asistente',
-    tipHasContent: '¡Listo para traducir! Haz clic en "Traducir" o pregunta al asistente',
+    tipEmpty: 'Escribe, arrastra un DOCX, o pídele a la IA que genere contenido',
+    tipHasContent: '¡Listo! Edita con lenguaje natural, traduce, o pídele ayuda a la IA',
     tipTranslating: 'Traducción en progreso — puedes ver el documento actualizándose',
     tipComplete: '¡Traducción completa! Haz clic en revertir en el panel si lo necesitas',
     tipReverted: 'Documento original restaurado',
@@ -228,8 +230,8 @@ export const translations: Record<Language, Translations> = {
     askForHelp: 'Ayuda',
     // Quick action prompts (sent to AI)
     contractPrompt: 'Escribe un contrato formal entre dos partes usando placeholders para nombres, fechas y términos',
-    reportPrompt: 'Crea un informe empresarial profesional en el editor de documentos con resumen ejecutivo, hallazgos clave, análisis y secciones de recomendaciones',
-    helpPrompt: '¿En qué puedes ayudarme con este editor de documentos?',
+    reportPrompt: 'Crea un informe empresarial profesional con una narrativa fluida y atractiva. Incluye resumen ejecutivo, hallazgos clave, análisis y recomendaciones. Escribe con prosa envolvente y contenido de ejemplo real, usando placeholders solo para datos específicos como fechas, cifras y nombres de empresas que necesitarían completarse después.',
+    helpPrompt: '¿En qué puedes ayudarme? Quiero saber sobre generar contenido, editar con lenguaje natural, traducir documentos y todas las funciones DOCX que soportas.',
     // Translation overlay
     translatingDocument: 'Traduciendo documento',
     analyzingDocument: 'Analizando documento',

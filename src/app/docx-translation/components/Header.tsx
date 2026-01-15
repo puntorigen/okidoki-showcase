@@ -105,7 +105,7 @@ export default function Header({
           <div className="flex items-center gap-3">
             <div>
               <h1 className="text-lg font-semibold">
-                <Link href="/" className="hover:text-indigo-300 transition-colors">Okidoki</Link> <span className="text-slate-400">×</span> DocTranslate
+                <Link href="/" className="hover:text-indigo-300 transition-colors">Okidoki</Link> <span className="text-slate-400">×</span> SuperDoc
               </h1>
               <p className="text-xs text-slate-400">{t('subtitle')}</p>
             </div>

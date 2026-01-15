@@ -41,24 +41,24 @@ export default function Home() {
                 <Languages className="w-7 h-7 text-white" />
               </div>
               <h3 className="text-xl font-bold text-slate-900 mb-3">
-                DocTranslate
+                SuperDoc Editor
               </h3>
               <p className="text-slate-600 mb-6 leading-relaxed">
-                AI-powered document translation preserving formatting, tables, and structure. 
-                Handles 50-100+ page documents with industry-aware terminology.
+                Advanced AI-powered DOCX editor with translation capabilities. Generate, edit, and transform 
+                documents using natural language. Translate to any language while preserving formatting and consistent terminology.
               </p>
               <div className="flex flex-wrap gap-2 mb-6">
                 <span className="px-3 py-1 bg-indigo-50 text-indigo-700 text-xs font-medium rounded-full">
-                  Translation
+                  AI Content Generation
+                </span>
+                <span className="px-3 py-1 bg-violet-50 text-violet-700 text-xs font-medium rounded-full">
+                  Smart Translation
                 </span>
                 <span className="px-3 py-1 bg-slate-100 text-slate-600 text-xs font-medium rounded-full">
-                  Large Documents
+                  Natural Language Editing
                 </span>
                 <span className="px-3 py-1 bg-slate-100 text-slate-600 text-xs font-medium rounded-full">
-                  RAG Glossary
-                </span>
-                <span className="px-3 py-1 bg-slate-100 text-slate-600 text-xs font-medium rounded-full">
-                  Track Changes
+                  Format Preservation
                 </span>
               </div>
               <div className="flex items-center text-indigo-600 font-semibold group-hover:gap-3 gap-2 transition-all">
