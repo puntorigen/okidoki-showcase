@@ -102,6 +102,7 @@ export const SketchCanvas = forwardRef<SketchCanvasRef, SketchCanvasProps>(
     }, []);
 
     // Initialize all canvases (layers are transparent, display has white bg)
+    // This also RESETS history completely
     const initCanvas = useCallback(() => {
       const sketch = sketchCanvasRef.current;
       const color = colorCanvasRef.current;
@@ -117,13 +118,16 @@ export const SketchCanvas = forwardRef<SketchCanvasRef, SketchCanvasProps>(
       // Composite to display
       compositeDisplay();
       
-      // Save initial state
+      // RESET history to fresh state (no undo available after clear)
       historyRef.current = [{
         sketch: sketch.toDataURL(),
         color: color.toDataURL(),
       }];
       historyIndexRef.current = 0;
-    }, [compositeDisplay]);
+      
+      // Notify parent that history was reset
+      onHistoryChange?.(false, false);
+    }, [compositeDisplay, onHistoryChange]);
 
     // Setup canvases on size change
     useEffect(() => {
@@ -353,7 +357,7 @@ export const SketchCanvas = forwardRef<SketchCanvasRef, SketchCanvasProps>(
       },
       
       clear: () => {
-        saveStateBeforeStroke();
+        // Just reset - don't save current state (we're clearing everything)
         initCanvas();
       },
       
